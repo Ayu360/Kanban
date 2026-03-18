@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import KanbanBody from "./components/KanbanBody";
 import KanbanHeader from "./components/KanbanHeader";
 import EditModal from "./components/EditModal";
 import AddCardModal from "./components/AddCardModal";
+import MoveCardModal from "./components/MoveCardModal";
 import {
   DndContext,
   type DragEndEvent,
@@ -47,6 +48,24 @@ type EditTarget =
 
 const LOCAL_TOPIC_PREFIX = "local_";
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window !== "undefined") {
+        setIsMobile(window.innerWidth < 640);
+      }
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return isMobile;
+}
+
 const KanbanDashBoard = () => {
   const currentUser = useSelector((state: RootState) => state.auth.currentUser);
   const searchQuery = useSelector((state: RootState) => state.ui.searchQuery);
@@ -57,6 +76,8 @@ const KanbanDashBoard = () => {
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [localTopics, setLocalTopics] = useState<Topic[]>([]);
   const [addCardColumnId, setAddCardColumnId] = useState<string | null>(null);
+  const [moveTargetTopic, setMoveTargetTopic] = useState<Topic | null>(null);
+  const isMobile = useIsMobile();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -70,6 +91,7 @@ const KanbanDashBoard = () => {
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
+      if (isMobile) return;
       const { active, over } = event;
       if (!over || !board || !currentUser) return;
       const topicId = String(active.id);
@@ -99,7 +121,7 @@ const KanbanDashBoard = () => {
         });
       }
     },
-    [board, currentUser, moveTopic, allTopics]
+    [board, currentUser, moveTopic, allTopics, isMobile]
   );
 
   const topicsByColumnId = useMemo(() => {
@@ -143,6 +165,30 @@ const KanbanDashBoard = () => {
     [updateTopic]
   );
 
+  const handleMoveTopicToColumn = useCallback(
+    (topic: Topic, newColumnId: string) => {
+      if (!board || !currentUser) return;
+      if (!newColumnId || topic.columnId === newColumnId) return;
+
+      const topicId = topic.id;
+      if (topicId.startsWith(LOCAL_TOPIC_PREFIX)) {
+        setLocalTopics((prev) =>
+          prev.map((t) =>
+            t.id === topicId ? { ...t, columnId: newColumnId } : t
+          )
+        );
+      } else {
+        moveTopic.mutateAsync({
+          topicId,
+          newColumnId,
+          boardId: board.id,
+          userId: currentUser.id,
+        });
+      }
+    },
+    [board, currentUser, moveTopic]
+  );
+
   const addCardColumn = board?.columns.find((c) => c.id === addCardColumnId);
 
   if (isLoading || !board) {
@@ -181,6 +227,8 @@ const KanbanDashBoard = () => {
           onEditTopic={(topic) => setEditTarget({ type: "topic", topic })}
           onEditColumn={(column) => setEditTarget({ type: "column", column })}
           onAddCard={(columnId: string) => setAddCardColumnId(columnId)}
+          isMobile={isMobile}
+          onMoveTopicRequest={(topic) => setMoveTargetTopic(topic)}
         />
       </div>
       <EditModal
@@ -200,6 +248,18 @@ const KanbanDashBoard = () => {
           }
         />
       )}
+      <MoveCardModal
+        topic={moveTargetTopic}
+        columns={board.columns}
+        isOpen={!!moveTargetTopic && isMobile}
+        onClose={() => setMoveTargetTopic(null)}
+        onConfirm={(columnId) => {
+          if (moveTargetTopic) {
+            handleMoveTopicToColumn(moveTargetTopic, columnId);
+          }
+          setMoveTargetTopic(null);
+        }}
+      />
     </DndContext>
   );
 };

@@ -10,6 +10,8 @@ interface KanbanColumnProps {
   onEditTopic: (topic: Topic) => void;
   onEditColumn: (column: Column) => void;
   onAddCard: (columnId: string) => void;
+  isMobile: boolean;
+  onMoveTopicRequest: (topic: Topic) => void;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -18,6 +20,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onEditTopic,
   onEditColumn,
   onAddCard,
+  isMobile,
+  onMoveTopicRequest,
 }) => {
   const { isOver, setNodeRef } = useDroppable({
     id: column.id,
@@ -54,6 +58,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             key={topic.id}
             topic={topic}
             onEdit={() => onEditTopic(topic)}
+            isMobile={isMobile}
+            onMoveRequest={() => onMoveTopicRequest(topic)}
           />
         ))}
         <button

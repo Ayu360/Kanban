@@ -49,6 +49,15 @@ export default function EditModal({
     }
   }, [target]);
 
+  useEffect(() => {
+    if (!target) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [target]);
+
   if (!target) return null;
 
   const isTopic = target.type === "topic";

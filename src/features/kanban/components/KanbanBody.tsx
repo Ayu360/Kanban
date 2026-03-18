@@ -11,6 +11,8 @@ interface KanbanBodyProps {
   onEditTopic: (topic: Topic) => void;
   onEditColumn: (column: Column) => void;
   onAddCard: (columnId: string) => void;
+  isMobile: boolean;
+  onMoveTopicRequest: (topic: Topic) => void;
 }
 
 const KanbanBody: React.FC<KanbanBodyProps> = ({
@@ -19,21 +21,25 @@ const KanbanBody: React.FC<KanbanBodyProps> = ({
   onEditTopic,
   onEditColumn,
   onAddCard,
+  isMobile,
+  onMoveTopicRequest,
 }) => {
   return (
     <div className="mx-auto max-w-[1600px] px-4 pb-8 pt-4 sm:px-6 sm:pt-6 sm:pb-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-6 sm:overflow-x-auto sm:pb-2 sm:-mx-6 sm:px-6 sm:snap-x sm:snap-mandatory">
-      {columns.map((column) => (
-        <KanbanColumn
-          key={column.id}
-          column={column}
-          topics={topicsByColumnId[column.id] ?? []}
-          onEditTopic={onEditTopic}
-          onEditColumn={onEditColumn}
-          onAddCard={onAddCard}
-        />
-      ))}
-    </div>
+        {columns.map((column) => (
+          <KanbanColumn
+            key={column.id}
+            column={column}
+            topics={topicsByColumnId[column.id] ?? []}
+            onEditTopic={onEditTopic}
+            onEditColumn={onEditColumn}
+            onAddCard={onAddCard}
+            isMobile={isMobile}
+            onMoveTopicRequest={onMoveTopicRequest}
+          />
+        ))}
+      </div>
   </div>
   );
 };

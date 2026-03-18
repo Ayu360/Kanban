@@ -6,9 +6,16 @@ import type { Topic } from "@/features/kanban/types";
 interface KanbanCardProps {
   topic: Topic;
   onEdit: () => void;
+  isMobile: boolean;
+  onMoveRequest: () => void;
 }
 
-const KanbanCard: React.FC<KanbanCardProps> = ({ topic, onEdit }) => {
+const KanbanCard: React.FC<KanbanCardProps> = ({
+  topic,
+  onEdit,
+  isMobile,
+  onMoveRequest,
+}) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: topic.id,
   });
@@ -25,10 +32,11 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ topic, onEdit }) => {
       className={`group rounded-lg border bg-white p-3 text-left shadow-sm dark:bg-slate-800 dark:border-slate-600 sm:p-4 ${
         isDragging
           ? "z-50 rotate-2 shadow-lg ring-2 ring-sky-500/50"
-          : "cursor-grab active:cursor-grabbing transition-shadow hover:shadow-md"
+          : "transition-shadow hover:shadow-md" +
+            (isMobile ? "" : " cursor-grab active:cursor-grabbing")
       }`}
-      {...attributes}
-      {...listeners}
+      {...(!isMobile ? { ...attributes, ...listeners } : {})}
+      onClick={isMobile ? onMoveRequest : undefined}
     >
       <p className="font-medium text-slate-900 dark:text-slate-100">
         {topic.title}
