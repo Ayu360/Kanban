@@ -6,6 +6,7 @@ import type { RootState } from "@/store";
 import KanbanBody from "./components/KanbanBody";
 import KanbanHeader from "./components/KanbanHeader";
 import EditModal from "./components/EditModal";
+import AddCardModal from "./components/AddCardModal";
 import {
   DndContext,
   type DragEndEvent,
@@ -44,6 +45,8 @@ type EditTarget =
   | { type: "column"; column: Column }
   | null;
 
+const LOCAL_TOPIC_PREFIX = "local_";
+
 const KanbanDashBoard = () => {
   const currentUser = useSelector((state: RootState) => state.auth.currentUser);
   const searchQuery = useSelector((state: RootState) => state.ui.searchQuery);
@@ -52,10 +55,17 @@ const KanbanDashBoard = () => {
   const updateTopic = useUpdateTopic();
   const updateColumn = useUpdateColumn();
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
+  const [localTopics, setLocalTopics] = useState<Topic[]>([]);
+  const [addCardColumnId, setAddCardColumnId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } })
+  );
+
+  const allTopics = useMemo(
+    () => [...(board?.topics ?? []), ...localTopics],
+    [board?.topics, localTopics]
   );
 
   const onDragEnd = useCallback(
@@ -68,27 +78,72 @@ const KanbanDashBoard = () => {
       if (columnIds.has(String(over.id))) {
         newColumnId = String(over.id);
       } else {
-        const topicOver = board.topics.find((t) => t.id === String(over.id));
+        const topicOver = allTopics.find((t) => t.id === String(over.id));
         newColumnId = topicOver ? topicOver.columnId : "";
       }
       if (!newColumnId) return;
-      const topic = board.topics.find((t) => t.id === topicId);
+      const topic = allTopics.find((t) => t.id === topicId);
       if (!topic || topic.columnId === newColumnId) return;
-      moveTopic.mutateAsync({
-        topicId,
-        newColumnId,
-        boardId: board.id,
-        userId: currentUser.id,
-      });
+      if (topicId.startsWith(LOCAL_TOPIC_PREFIX)) {
+        setLocalTopics((prev) =>
+          prev.map((t) =>
+            t.id === topicId ? { ...t, columnId: newColumnId } : t
+          )
+        );
+      } else {
+        moveTopic.mutateAsync({
+          topicId,
+          newColumnId,
+          boardId: board.id,
+          userId: currentUser.id,
+        });
+      }
     },
-    [board, currentUser, moveTopic]
+    [board, currentUser, moveTopic, allTopics]
   );
 
   const topicsByColumnId = useMemo(() => {
-    if (!board?.topics) return {};
-    const filtered = filterTopicsBySearch(board.topics, searchQuery);
+    const filtered = filterTopicsBySearch(allTopics, searchQuery);
     return groupTopicsByColumnId(filtered);
-  }, [board?.topics, searchQuery]);
+  }, [allTopics, searchQuery]);
+
+  const handleAddCard = useCallback((columnId: string, title: string, description: string) => {
+    if (!board) return;
+    const column = board.columns.find((c) => c.id === columnId);
+    const maxOrder = Math.max(
+      0,
+      ...allTopics.filter((t) => t.columnId === columnId).map((t) => t.order)
+    );
+    const newTopic: Topic = {
+      id: `${LOCAL_TOPIC_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      columnId,
+      boardId: board.id,
+      title,
+      description,
+      order: maxOrder + 1,
+    };
+    setLocalTopics((prev) => [...prev, newTopic]);
+    setAddCardColumnId(null);
+  }, [board, allTopics]);
+
+  const handleSaveTopic = useCallback(
+    (params: { id: string; title: string; description: string; boardId: string; userId: string }) => {
+      if (params.id.startsWith(LOCAL_TOPIC_PREFIX)) {
+        setLocalTopics((prev) =>
+          prev.map((t) =>
+            t.id === params.id
+              ? { ...t, title: params.title, description: params.description }
+              : t
+          )
+        );
+      } else {
+        updateTopic.mutateAsync(params);
+      }
+    },
+    [updateTopic]
+  );
+
+  const addCardColumn = board?.columns.find((c) => c.id === addCardColumnId);
 
   if (isLoading || !board) {
     return (
@@ -125,6 +180,7 @@ const KanbanDashBoard = () => {
           topicsByColumnId={topicsByColumnId}
           onEditTopic={(topic) => setEditTarget({ type: "topic", topic })}
           onEditColumn={(column) => setEditTarget({ type: "column", column })}
+          onAddCard={(columnId: string) => setAddCardColumnId(columnId)}
         />
       </div>
       <EditModal
@@ -132,9 +188,18 @@ const KanbanDashBoard = () => {
         boardId={board.id}
         userId={currentUser!.id}
         onClose={() => setEditTarget(null)}
-        onSaveTopic={(params) => updateTopic.mutateAsync(params)}
+        onSaveTopic={handleSaveTopic}
         onSaveColumn={(params) => updateColumn.mutateAsync(params)}
       />
+      {addCardColumn && (
+        <AddCardModal
+          columnTitle={addCardColumn.title}
+          onClose={() => setAddCardColumnId(null)}
+          onSubmit={(title, description) =>
+            handleAddCard(addCardColumn.id, title, description)
+          }
+        />
+      )}
     </DndContext>
   );
 };

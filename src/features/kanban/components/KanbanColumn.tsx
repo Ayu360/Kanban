@@ -9,6 +9,7 @@ interface KanbanColumnProps {
   topics: Topic[];
   onEditTopic: (topic: Topic) => void;
   onEditColumn: (column: Column) => void;
+  onAddCard: (columnId: string) => void;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -16,6 +17,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   topics,
   onEditTopic,
   onEditColumn,
+  onAddCard,
 }) => {
   const { isOver, setNodeRef } = useDroppable({
     id: column.id,
@@ -54,6 +56,16 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             onEdit={() => onEditTopic(topic)}
           />
         ))}
+        <button
+          type="button"
+          onClick={() => onAddCard(column.id)}
+          className="mt-1 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 py-3 text-sm font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50/50 hover:text-sky-600 dark:border-slate-600 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:bg-sky-900/10 dark:hover:text-sky-400"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add card
+        </button>
       </div>
     </div>
   );

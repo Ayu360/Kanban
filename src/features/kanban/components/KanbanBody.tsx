@@ -10,6 +10,7 @@ interface KanbanBodyProps {
   topicsByColumnId: Record<string, Topic[]>;
   onEditTopic: (topic: Topic) => void;
   onEditColumn: (column: Column) => void;
+  onAddCard: (columnId: string) => void;
 }
 
 const KanbanBody: React.FC<KanbanBodyProps> = ({
@@ -17,6 +18,7 @@ const KanbanBody: React.FC<KanbanBodyProps> = ({
   topicsByColumnId,
   onEditTopic,
   onEditColumn,
+  onAddCard,
 }) => {
   return (
     <div className="mx-auto max-w-[1600px] px-4 pb-8 pt-4 sm:px-6 sm:pt-6 sm:pb-8">
@@ -28,6 +30,7 @@ const KanbanBody: React.FC<KanbanBodyProps> = ({
           topics={topicsByColumnId[column.id] ?? []}
           onEditTopic={onEditTopic}
           onEditColumn={onEditColumn}
+          onAddCard={onAddCard}
         />
       ))}
     </div>
