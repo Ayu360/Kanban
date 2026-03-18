@@ -5,6 +5,9 @@ import { Providers } from "./Providers";
 export const metadata: Metadata = {
   title: "Kanban Demo",
   description: "Kanban board with TanStack Query and Redux",
+  icons: {
+    icon: "/assets/logo.ico",
+  },
 };
 
 export default function RootLayout({
