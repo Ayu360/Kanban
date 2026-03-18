@@ -1,8 +1,11 @@
-
-
-export interface KanbanProps {
-    id: string;
-}
-
-export interface KanbanColumnProps extends KanbanProps {}
-export interface KanbanCardProps extends KanbanProps {}
+export type {
+  User,
+  Board,
+  Column,
+  Topic,
+  BoardWithDetails,
+  ColumnCategory,
+  KanbanProps,
+  KanbanColumnProps,
+  KanbanCardProps,
+} from "../index";

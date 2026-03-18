@@ -1,24 +1,38 @@
-import clsx from "clsx";
-import KanbanColumn from "./KanbanColumn";
+"use client";
 
-const KanbanBody = () => {
-    return (
-        <div
-            className={
-                clsx(
-                    "flex gap-4 items-stretch justify-around",
-                    " w-full px-4"
-                )}
-        >
-            {
-                Array(4).fill(() => 0).map((_, idx) => {
-                    return (
-                        <KanbanColumn key={idx} id={`droppable_${idx}`} />
-                    )
-                })
-            }
-        </div>
-    )
+import KanbanColumn from "./KanbanColumn";
+import type { Column, Topic } from "@/features/kanban/types";
+
+interface KanbanBodyProps {
+  boardId: string;
+  userId: string;
+  columns: Column[];
+  topicsByColumnId: Record<string, Topic[]>;
+  onEditTopic: (topic: Topic) => void;
+  onEditColumn: (column: Column) => void;
 }
+
+const KanbanBody: React.FC<KanbanBodyProps> = ({
+  columns,
+  topicsByColumnId,
+  onEditTopic,
+  onEditColumn,
+}) => {
+  return (
+    <div className="mx-auto max-w-[1600px] px-4 pb-8 pt-4 sm:px-6 sm:pt-6 sm:pb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:gap-6 sm:overflow-x-auto sm:pb-2 sm:-mx-6 sm:px-6 sm:snap-x sm:snap-mandatory">
+      {columns.map((column) => (
+        <KanbanColumn
+          key={column.id}
+          column={column}
+          topics={topicsByColumnId[column.id] ?? []}
+          onEditTopic={onEditTopic}
+          onEditColumn={onEditColumn}
+        />
+      ))}
+    </div>
+  </div>
+  );
+};
 
 export default KanbanBody;

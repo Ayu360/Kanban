@@ -1,42 +1,62 @@
-"use client"
-import clsx from "clsx";
-import { KanbanColumnProps } from "../types/interface";
+"use client";
+
 import { useDroppable } from "@dnd-kit/core";
+import KanbanCard from "./KanbanCard";
+import type { Column, Topic } from "@/features/kanban/types";
 
-import dynamic from "next/dynamic";
-const KanbanCard = dynamic(() => import("./KanbanCard"),{ssr: false});
-
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ id }) => {
-    const { isOver, setNodeRef } = useDroppable({
-        id,
-    });
-
-    return (
-        <div
-            ref={setNodeRef}
-            className={
-                clsx(
-                    "flex-1 flex flex-col gap-1",
-                    "rounded-sm border min-h-96 text-center",
-                    isOver && "border-green-400 bg-green-400 opacity-20"
-                )
-            }
-        >
-            <div className="py-7 border-b text-xl">Heading {isOver? "true": "false"}</div>
-            <div className="flex flex-col gap-2 items-stretch p-4 text-base">
-                {
-                    Array(4).fill(() => 0).map((_, idx) => {
-                        return (
-                            <KanbanCard
-                                key={idx}
-                                id={`${id + idx}`}
-                            />
-                        )
-                    })
-                }
-            </div>
-        </div>
-    )
+interface KanbanColumnProps {
+  column: Column;
+  topics: Topic[];
+  onEditTopic: (topic: Topic) => void;
+  onEditColumn: (column: Column) => void;
 }
+
+const KanbanColumn: React.FC<KanbanColumnProps> = ({
+  column,
+  topics,
+  onEditTopic,
+  onEditColumn,
+}) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: column.id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex w-full flex-col shrink-0 rounded-xl border-2 border-dashed transition-colors sm:min-w-[280px] sm:max-w-[320px] sm:flex-1 sm:snap-center ${
+        isOver
+          ? "border-sky-400 bg-sky-50/50 dark:border-sky-500 dark:bg-sky-900/10"
+          : "border-slate-200 bg-slate-50/80 dark:border-slate-600 dark:bg-slate-800/50"
+      }`}
+    >
+      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5 dark:border-slate-600 sm:px-4 sm:py-3">
+        <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 sm:text-sm">
+          {column.title}
+        </h2>
+        <button
+          type="button"
+          onClick={() => onEditColumn(column)}
+          className="shrink-0 rounded p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+          title="Edit column"
+          aria-label={`Edit column ${column.title}`}
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex min-h-[280px] flex-col gap-2 p-3 sm:min-h-[320px] sm:gap-3 sm:p-4">
+        {topics.map((topic) => (
+          <KanbanCard
+            key={topic.id}
+            topic={topic}
+            onEdit={() => onEditTopic(topic)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export default KanbanColumn;
