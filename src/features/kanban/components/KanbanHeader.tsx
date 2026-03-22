@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { store } from "@/store";
@@ -43,13 +44,21 @@ const KanbanHeader = () => {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sky-500 text-white shadow-sm sm:h-9 sm:w-9">
-            <img src="/assets/logo.png" alt="" className="h-4 w-4 object-contain sm:h-5 sm:w-5" aria-hidden />
-          </div>
-          <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
-            Kanban
-          </h1>
+        <div className="flex min-w-0 items-center gap-4">
+          <Link href="/kanban" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sky-500 text-white shadow-sm sm:h-9 sm:w-9">
+              <img src="/assets/logo.png" alt="" className="h-4 w-4 object-contain sm:h-5 sm:w-5" aria-hidden />
+            </div>
+            <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
+              Kanban
+            </h1>
+          </Link>
+          <Link
+            href="/how-it-works"
+            className="hidden text-sm font-medium text-slate-600 underline underline-offset-2 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 sm:block"
+          >
+            How it works
+          </Link>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-3">
           <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-initial">

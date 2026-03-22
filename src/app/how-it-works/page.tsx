@@ -26,14 +26,17 @@ export default function HowItWorksPage() {
         transition={{ duration: 0.5 }}
         className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 py-4 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80"
       >
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 text-white">
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-              </svg>
-            </div>
-            <span className="font-semibold text-slate-900 dark:text-slate-100">Kanban</span>
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4">
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 text-white">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                </svg>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">Kanban</span>
+            </Link>
+            <span className="text-sm font-medium text-sky-600 underline underline-offset-2 dark:text-sky-400">How it works</span>
           </div>
           <Link
             href="/login"
