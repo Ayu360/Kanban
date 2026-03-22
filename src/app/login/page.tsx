@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { store } from "@/store";
@@ -60,6 +61,12 @@ export default function LoginPage() {
       <p className="mb-8 text-center text-slate-600 dark:text-slate-400">
         Choose a user to continue
       </p>
+      <Link
+        href="/how-it-works"
+        className="mb-8 text-center text-sm font-medium text-sky-600 underline-offset-2 transition hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+      >
+        New here? See how it works →
+      </Link>
       <div className="flex flex-wrap justify-center gap-4">
         {users.map((user) => (
           <button
