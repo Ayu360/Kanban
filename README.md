@@ -51,7 +51,7 @@ npm run build
 npm start
 ```
 
-Then open [http://localhost:3000](http://localhost:3000). You’ll be redirected to `/login` or `/kanban` depending on auth state.
+Then open [http://localhost:3000](http://localhost:3000). You’ll be redirected to `/login` or `/kanban` depending on auth state (right now fake).
 
 ### Scripts
 
