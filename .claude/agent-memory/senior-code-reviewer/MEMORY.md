@@ -1,0 +1,2 @@
+- [User Profile](user_role.md) — developer building a Kanban/work management SaaS on Next.js + Supabase
+- [Project Context](project_kanban.md) — Kanban work management platform: architecture, ADR conventions, key patterns
