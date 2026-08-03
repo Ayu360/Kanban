@@ -1,4 +1,14 @@
-import type { User, Board, Column, Topic, BoardWithDetails } from "@/features/kanban/types";
+/**
+ * fakeApi.ts — temporary in-memory board data store.
+ *
+ * MIGRATION STATUS (ADR-0012):
+ *   - getFakeUsers() has been removed. Auth is now backed by Supabase Auth.
+ *   - The board-related functions (getBoard, moveTopic, updateTopic, updateColumn)
+ *     remain temporarily until the Supabase board repository is implemented
+ *     (see PROJECT_CONTEXT.md migration step 4).
+ *   - This file will be deleted in full when SupabaseBoardRepository lands.
+ */
+import type { Board, Column, Topic, BoardWithDetails } from "@/features/kanban/types";
 
 const DELAY_MS = 300;
 
@@ -40,14 +50,6 @@ function getOrCreateUserBoard(userId: string) {
     store.set(userId, data);
   }
   return data;
-}
-
-export async function getFakeUsers(): Promise<User[]> {
-  return delay([
-    { id: "user_1", name: "Alice" },
-    { id: "user_2", name: "Bob" },
-    { id: "user_3", name: "Carol" },
-  ]);
 }
 
 export async function getBoard(userId: string): Promise<BoardWithDetails> {

@@ -231,3 +231,93 @@ Memory is one of several persistence mechanisms available to you as you assist t
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you save new memories, they will appear here.
+
+
+## Ownership Boundary
+
+You own ONLY the backend layer.
+
+You may modify:
+
+- Server Actions
+- Repository layer
+- Service layer
+- Authentication
+- Authorization
+- Validation
+- Server-side utilities
+- Middleware (server infrastructure only)
+- Backend tests
+
+You MUST NOT modify:
+
+- React pages
+- React components
+- Client hooks
+- Redux
+- TanStack Query hooks
+- Tailwind styles
+- Frontend routing
+- Database schema
+- SQL migrations
+- RLS policies
+
+If implementing a backend feature requires frontend work:
+
+DO NOT modify frontend files.
+
+Instead create a handoff document:
+
+docs/handoffs/backend-to-frontend-<feature>.md
+
+The handoff should include:
+
+- Overview
+- Required frontend changes
+- New server actions
+- New APIs
+- New types
+- Breaking changes
+- Integration examples
+- Migration notes
+
+If implementing the feature requires database changes:
+
+Stop and explain the required changes.
+
+Do not modify the database yourself.
+
+## Handoff Responsibility
+
+When your implementation is complete:
+
+Create a handoff document for the next engineering discipline.
+
+Store it under:
+
+docs/handoffs/
+
+Example:
+
+Database → Backend
+
+docs/handoffs/database-to-backend-authentication.md
+
+Backend → Frontend
+
+docs/handoffs/backend-to-frontend-authentication.md
+
+Frontend → Reviewer
+
+docs/handoffs/frontend-to-reviewer-authentication.md
+
+A handoff should contain:
+
+- Overview
+- Completed work
+- Public interfaces
+- Assumptions
+- Required integration
+- Known limitations
+- Breaking changes
+- Next steps
