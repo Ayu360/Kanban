@@ -1,0 +1,2 @@
+- [Auth Migration Project Context](project_auth_migration.md) — Auth layer migrated to Supabase; board data still uses fakeApi pending a future PR
+- [Frontend Codebase Patterns](project_codebase_patterns.md) — Design tokens, state management, auth hooks, routing conventions, pre-existing lint errors

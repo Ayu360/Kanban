@@ -1,25 +1,16 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useSelector } from "react-redux";
-import type { RootState } from "@/store";
-
+/**
+ * Root page — unconditionally redirects to /kanban.
+ *
+ * Middleware (src/middleware.ts) handles the actual auth enforcement:
+ * - Unauthenticated users hitting /kanban are redirected to /login.
+ * - Authenticated users hitting /login are redirected to /kanban.
+ *
+ * This Server Component does not perform auth checks itself (ADR-0011).
+ * It simply provides the entry-point redirect so the root path "/" is not a
+ * dead end.
+ */
 export default function Home() {
-  const router = useRouter();
-  const currentUser = useSelector((state: RootState) => state.auth.currentUser);
-
-  useEffect(() => {
-    if (currentUser) {
-      router.replace("/kanban");
-    } else {
-      router.replace("/login");
-    }
-  }, [currentUser, router]);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
-      <p className="text-zinc-600 dark:text-zinc-400">Redirecting...</p>
-    </div>
-  );
+  redirect("/kanban");
 }
