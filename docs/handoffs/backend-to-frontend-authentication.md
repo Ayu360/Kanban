@@ -271,7 +271,7 @@ File: `src/middleware.ts`
 - Unauthenticated users hitting a protected route are redirected to `/login?redirect=/original/path`.
 - `signInAction` validates and returns `redirectTo` in its success payload.
 - The login page reads `searchParams.get("redirect")` and passes it as the `redirectTo` hidden input.
-- `isSafeRedirectPath()` (exported from `authActions.ts`) validates the path — only relative paths starting with `/` (but not `//`) are accepted.
+- `isSafeRedirectPath()` (from `features/auth/utils/isSafeRedirectPath.ts`) validates the path — only relative paths starting with `/` (but not `//`) are accepted.
 
 ---
 

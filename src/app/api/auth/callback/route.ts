@@ -24,8 +24,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-// Reuse the safe-redirect guard from authActions — single source of truth.
-import { isSafeRedirectPath } from "@/features/auth/services/authActions";
+// Reuse the safe-redirect guard — single source of truth.
+import { isSafeRedirectPath } from "@/features/auth/utils/isSafeRedirectPath";
 
 /** Default page to land on after a successful code exchange. */
 const DEFAULT_NEXT_PATH = "/reset-password/confirm";

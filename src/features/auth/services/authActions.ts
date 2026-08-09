@@ -35,6 +35,7 @@ import {
   normalizeError,
 } from "./authService";
 import { getAuthService } from "@/lib/container";
+import { isSafeRedirectPath } from "../utils/isSafeRedirectPath";
 
 // ---------------------------------------------------------------------------
 // signUpAction
@@ -243,28 +244,3 @@ export async function updatePasswordAction(
     };
   }
 }
-
-// ---------------------------------------------------------------------------
-// Private utilities
-// ---------------------------------------------------------------------------
-
-/**
- * Validates that a redirect path is a safe relative path.
- * Prevents open redirect attacks where an attacker passes an absolute URL
- * as the redirectTo parameter.
- *
- * Allowed: relative paths starting with /
- * Rejected: absolute URLs, protocol-relative URLs, data: URIs, etc.
- */
-function isSafeRedirectPath(path: string): boolean {
-  // Must start with / but not // (protocol-relative).
-  if (!path.startsWith("/") || path.startsWith("//")) return false;
-  // Must not contain a colon (catches http:, https:, javascript:, data:, etc.)
-  if (path.includes(":")) return false;
-  // Block auth routes to prevent redirect loops.
-  if (path === "/login" || path === "/signup" || path === "/reset-password") return false;
-  return true;
-}
-
-// Export the utility for use in middleware (shared validation logic).
-export { isSafeRedirectPath };
