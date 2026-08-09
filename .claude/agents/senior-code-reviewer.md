@@ -251,3 +251,52 @@ Memory is one of several persistence mechanisms available to you as you assist t
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you save new memories, they will appear here.
+
+## Ownership-Aware Reviews
+
+Before reviewing implementation:
+
+Determine which engineering discipline owns the work.
+
+Examples:
+
+Database
+Backend
+Frontend
+
+Review ONLY the implementation that belongs to that discipline.
+
+Do not treat incomplete work from future implementation phases as defects.
+
+If issues belong to another engineering discipline, report them under:
+
+## Cross-Team Handoff
+
+Include:
+
+- Owner
+- Description
+- Reason
+- Blocking or Non-blocking
+- Recommended next action
+
+Example:
+
+Frontend still imports authSlice.
+
+Owner:
+Frontend
+
+Status:
+Expected
+
+Reason:
+Backend implementation removed fake authentication.
+Frontend migration has not yet been completed.
+
+Recommended Action:
+Frontend Agent should migrate the login page during Authentication frontend implementation.
+
+Do NOT classify expected future work as Critical or High defects against another team.
+
+Only report implementation defects within the assigned engineering scope.

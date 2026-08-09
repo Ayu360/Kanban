@@ -33,3 +33,12 @@ Multi-tenant SaaS work management platform (teams, boards, tasks). MVP is single
 - M-2 (password min-length on confirm page): RESOLVED. `handleSubmit` in confirm/page.tsx runs `password.length < 8` check at line 43 before mismatch check at line 49. Error text exactly matches signup. `aria-describedby` toggles `password-error` / `password-hint`. `role="alert"` on inline error. `updatePasswordAction` not called on early return.
 - Open Low findings (Escape key, metadata, unused React import, autoComplete on confirmPassword) remain unresolved — correctly out of scope for this fix.
 - NOTE: The `src/app/(auth)/` directory and several other files (`kanban/page.tsx`, `page.tsx`, `KanbanHeader.tsx`, `index.tsx`) are NOT yet committed to git. They exist as untracked/modified working tree changes. The branch `feat/backend-auth-foundation` only has the backend auth commit (f80ad8e). Frontend work needs to be committed.
+
+**Backend Auth module review notes (2026-08-03):**
+- `server-only` npm package is NOT installed — `env.ts` exports `SUPABASE_SERVICE_ROLE_KEY` and is imported by `browser.ts` ("use client"). Relies solely on bundler tree-shaking for secret safety. High risk.
+- `src/app/login/page.tsx` and `src/features/kanban/components/KanbanHeader.tsx` still import deleted `authSlice.ts` and removed `getFakeUsers`. Broken TypeScript build — ADR-0012 cleanup is incomplete.
+- `updatePasswordAction` uses server-side Supabase client for password reset, but no `/auth/callback` route exists for the PKCE code exchange. Password reset flow will fail in production without this route.
+- `signUpAction` does not establish a session after signup — the session from `supabase.auth.signUp()` is discarded. User is left unauthenticated after signup if a separate signIn call is not made.
+- `mapAuthErrorMessage` relies on string-matching Supabase error messages — fragile, will silently break if Supabase changes message text.
+- Middleware uses `process.env.NEXT_PUBLIC_SUPABASE_URL!` with non-null assertion — silent failure if env vars are missing, unlike the startup-fail pattern in `env.ts`.
+- `ActionResult<T>` discriminated union pattern is excellent. Swap seam (ADR-0004) correctly implemented.

@@ -242,3 +242,38 @@ Memory is one of several persistence mechanisms available to you as you assist t
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you save new memories, they will appear here.
+
+## Handoff Responsibility
+
+When your implementation is complete:
+
+Create a handoff document for the next engineering discipline.
+
+Store it under:
+
+docs/handoffs/
+
+Example:
+
+Database → Backend
+
+docs/handoffs/database-to-backend-authentication.md
+
+Backend → Frontend
+
+docs/handoffs/backend-to-frontend-authentication.md
+
+Frontend → Reviewer
+
+docs/handoffs/frontend-to-reviewer-authentication.md
+
+A handoff should contain:
+
+- Overview
+- Completed work
+- Public interfaces
+- Assumptions
+- Required integration
+- Known limitations
+- Breaking changes
+- Next steps
