@@ -17,6 +17,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { useBoard, useMoveTopic, useUpdateTopic, useUpdateColumn } from "@/api/board";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { Topic, Column } from "@/features/kanban/types";
 
 function filterTopicsBySearch(topics: Topic[], searchQuery: string): Topic[] {
@@ -67,7 +68,7 @@ function useIsMobile() {
 }
 
 const KanbanDashBoard = () => {
-  const currentUser = useSelector((state: RootState) => state.auth.currentUser);
+  const { user: currentUser } = useCurrentUser();
   const searchQuery = useSelector((state: RootState) => state.ui.searchQuery);
   const { data: board, isLoading, isError } = useBoard(currentUser?.id);
   const moveTopic = useMoveTopic();
@@ -131,7 +132,6 @@ const KanbanDashBoard = () => {
 
   const handleAddCard = useCallback((columnId: string, title: string, description: string) => {
     if (!board) return;
-    const column = board.columns.find((c) => c.id === columnId);
     const maxOrder = Math.max(
       0,
       ...allTopics.filter((t) => t.columnId === columnId).map((t) => t.order)
@@ -221,7 +221,7 @@ const KanbanDashBoard = () => {
         <KanbanHeader />
         <KanbanBody
           boardId={board.id}
-          userId={currentUser!.id}
+          userId={currentUser?.id ?? ""}
           columns={board.columns}
           topicsByColumnId={topicsByColumnId}
           onEditTopic={(topic) => setEditTarget({ type: "topic", topic })}
@@ -234,7 +234,7 @@ const KanbanDashBoard = () => {
       <EditModal
         target={editTarget}
         boardId={board.id}
-        userId={currentUser!.id}
+        userId={currentUser?.id ?? ""}
         onClose={() => setEditTarget(null)}
         onSaveTopic={handleSaveTopic}
         onSaveColumn={(params) => updateColumn.mutateAsync(params)}
