@@ -167,8 +167,10 @@ function mapPostgrestError(
           error
         );
       }
-      // Generic check violation fallback
-      return new AppError("VALIDATION_ERROR", message || "Validation failed.", error);
+      // Generic check violation fallback — use a safe fixed string, not the raw
+      // PostgrestError.message which may contain constraint names or table names.
+      // The original error is preserved as the cause for server-side inspection.
+      return new AppError("VALIDATION_ERROR", "Validation failed.", error);
 
     case PG_FK_VIOLATION:
       return new AppError(

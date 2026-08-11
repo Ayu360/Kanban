@@ -309,6 +309,12 @@ export class TeamsService {
    *
    * In all cases the anon-key client + RLS is the authoritative filter.
    * This method simply chooses the correct query parameter.
+   *
+   * NOTE: Not called by any Server Action today. Browser read hooks (useTeams)
+   * use the Supabase browser client + RLS directly. This method is reserved for
+   * future server-side read flows (Server Components, admin panel, platform-admin
+   * cross-company listing). Do not remove without a deliberate architectural
+   * decision about server-side reads.
    */
   async listTeamsForCaller(caller: Profile): Promise<Team[]> {
     // Both platform_admin and company_admin use listByCompany(caller.companyId).
@@ -324,6 +330,11 @@ export class TeamsService {
   /**
    * Returns a single team by ID.
    * RLS on the anon client enforces visibility (employees only see their teams).
+   *
+   * NOTE: Not called by any Server Action today. Browser read hooks (useTeam)
+   * use the Supabase browser client + RLS directly. Reserved for future
+   * server-side read flows (Server Components, admin panel). Do not remove
+   * without a deliberate architectural decision about server-side reads.
    */
   async getTeam(teamId: string): Promise<Team | null> {
     const teamIdError = validateUUID(teamId, "Team ID");
@@ -338,6 +349,12 @@ export class TeamsService {
   /**
    * Returns members of a team, enriched with profile display data.
    * RLS enforces read access — employees can only read members of their teams.
+   *
+   * NOTE: Not called by any Server Action today. Browser read hooks
+   * (useTeamMembers) use the Supabase browser client + RLS directly. Reserved
+   * for future server-side read flows (Server Components, admin panel, or
+   * service-role reads to surface member emails). Do not remove without a
+   * deliberate architectural decision about server-side reads.
    */
   async listTeamMembers(teamId: string): Promise<TeamMember[]> {
     const teamIdError = validateUUID(teamId, "Team ID");

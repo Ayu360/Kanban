@@ -33,7 +33,6 @@
  */
 
 import type { ActionResult, Team, CreateTeamResult } from "../types";
-import { AppError } from "../types";
 import { normalizeError } from "./teamsService";
 import { getTeamsService } from "@/lib/container";
 import { getAuthService } from "@/lib/container";
