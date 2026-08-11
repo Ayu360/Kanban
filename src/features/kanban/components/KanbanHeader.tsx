@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { store } from "@/store";
 import { setSearchQuery } from "@/store/slices/uiSlice";
@@ -19,6 +20,10 @@ const KanbanHeader = () => {
   const { user } = useCurrentUser();
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  // L-2: Determine whether the Teams nav link is the current page section.
+  const isTeamsActive = pathname.startsWith("/teams");
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -45,6 +50,14 @@ const KanbanHeader = () => {
             <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
               Kanban
             </h1>
+          </Link>
+          {/* L-2: aria-current="page" marks the active nav link for screen readers */}
+          <Link
+            href="/teams"
+            aria-current={isTeamsActive ? "page" : undefined}
+            className="hidden text-sm font-medium text-slate-600 underline underline-offset-2 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 sm:block"
+          >
+            Teams
           </Link>
           <Link
             href="/how-it-works"

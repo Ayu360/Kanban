@@ -27,6 +27,7 @@ import type {
   Profile,
 } from "../types";
 import { AppError } from "../types";
+export { normalizeError } from "@/lib/errors";
 
 /**
  * The default (and only, for MVP) company UUID.
@@ -165,14 +166,6 @@ export function validatePassword(password: string): string | null {
   return null;
 }
 
-/**
- * Normalizes AppError and unknown errors into an AppError.
- * Ensures the Server Action always catches a typed error.
- */
-export function normalizeError(error: unknown): AppError {
-  if (error instanceof AppError) return error;
-  if (error instanceof Error) {
-    return new AppError("UNKNOWN_ERROR", error.message, error);
-  }
-  return new AppError("UNKNOWN_ERROR", "An unexpected error occurred.", error);
-}
+// normalizeError is re-exported from @/lib/errors (shared utility).
+// The definition has been extracted there to eliminate the duplicate that
+// existed between authService.ts and teamsService.ts.

@@ -76,6 +76,7 @@ export interface SignUpResult {
  * repository sees Supabase internals (ADR-0004).
  */
 export type AppErrorCode =
+  // Auth-specific codes
   | "AUTH_INVALID_CREDENTIALS"
   | "AUTH_EMAIL_ALREADY_IN_USE"
   | "AUTH_WEAK_PASSWORD"
@@ -85,7 +86,13 @@ export type AppErrorCode =
   | "PROFILE_NOT_FOUND"
   | "PROFILE_CREATE_FAILED"
   | "COMPANY_NOT_FOUND"
+  // Generic codes reused across features
   | "VALIDATION_ERROR"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "FORBIDDEN"
+  | "UNAUTHENTICATED"
+  | "CROSS_COMPANY"
   | "UNKNOWN_ERROR";
 
 export class AppError extends Error {

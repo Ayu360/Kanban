@@ -12,6 +12,16 @@ type: project
 **Tables created so far:**
 - `public.companies` — tenant root. No `company_id` self-reference. Has `is_active` boolean.
 - `public.profiles` — extends `auth.users` (same UUID PK). Has `company_id`, `role` (text CHECK), `is_platform_admin` (boolean), `display_name` (nullable text).
+- `public.teams` — (migration 20260809000001) team groupings within a company. `company_id NOT NULL`, `name text`, CHECK non-empty+max 100. Case-insensitive unique within company via expression unique index `idx_teams_company_id_name_lower` on `(company_id, lower(trim(name)))`.
+- `public.team_members` — (migration 20260809000001) join table. Composite PK `(team_id, profile_id)`. FKs ON DELETE CASCADE. Cross-company membership blocked by `team_members_company_match_check` trigger. No `role` column in MVP.
+- `public.boards` — (migration 20260809000001) one per team (UNIQUE team_id). `company_id NOT NULL`. FK team ON DELETE CASCADE. No direct authenticated INSERT — only via `create_team_with_board` RPC.
+- `public.columns` — (migration 20260809000001) columns within boards. `company_id NOT NULL` (denormalized for RLS bypass). FK board ON DELETE CASCADE. `position integer CHECK > 0`. Seeded: 1=Todo, 2=In Progress, 3=Done. No direct authenticated INSERT.
+
+**Tasks table:** Does NOT exist yet. When created, must add `column_id FK columns ON DELETE CASCADE` and `company_id NOT NULL`. RLS will need team-membership traversal via columns → boards → team_members.
+
+**Unique name pattern:** Case-insensitive uniqueness within company is enforced via UNIQUE expression index `(company_id, lower(trim(name)))` — not citext, not CHECK. This is the established pattern for team names; apply to other per-company-unique name columns.
+
+**RPC atomicity pattern:** `create_team_with_board(p_company_id uuid, p_name text)` is SECURITY DEFINER. Creates team + board + 3 columns atomically. Caller identity derived from `auth.uid()` inside the function — NO `p_caller_id` parameter (removed in C-1 security review fix to prevent privilege escalation). Authorization enforced inside function. Boards/columns have NO authenticated INSERT policy — RPC is the only creation path. GRANT EXECUTE to authenticated + service_role; REVOKE FROM PUBLIC. Old 3-argument overload `(uuid, text, uuid)` is dropped at migration head via `DROP FUNCTION IF EXISTS`.
 
 **Default company seed:**
 - UUID: `00000000-0000-0000-0000-000000000001`

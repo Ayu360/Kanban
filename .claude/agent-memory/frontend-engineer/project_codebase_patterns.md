@@ -32,3 +32,25 @@ type: project
 - `EditModal.tsx` and `MoveCardModal.tsx`: `react-hooks/set-state-in-effect` errors.
 - `middleware.ts`: `searchParams` unused warning.
 - `KanbanHeader.tsx`: `<img>` instead of `next/image` warning (preserve existing pattern).
+- `teamsActions.ts`: unused `AppError` import — backend LOW note, do NOT touch from frontend.
+
+## Modal Accessibility Pattern (established 2026-08-10)
+- `useFocusTrap(isOpen: boolean)` hook at `src/features/teams/hooks/useFocusTrap.ts`.
+- Saves `document.activeElement` on open as restore target; restores on `isOpen → false`.
+- Tab/Shift+Tab trapped within container via `document` keydown listener.
+- Modals that mount/unmount (conditional render) pass `isOpen=true` since they're always visible when rendered.
+- `ConfirmDialog` uses `isOpen` prop because it always mounts but conditionally shows.
+- Container `div` gets `tabIndex={-1}` as fallback focus target if no focusable children.
+
+## Teams Feature (implemented 2026-08-10)
+- Mutation hooks: `useCreateTeam`, `useRenameTeam`, `useDeleteTeam`, `useAddTeamMember`, `useRemoveTeamMember` in `src/features/teams/hooks/`.
+- Read hooks (backend-provided): `useTeams`, `useTeam`, `useTeamMembers` in same folder.
+- Query key factory: `teamsQueryKeys` exported from `useTeams.ts`.
+- Pages: `/teams` and `/teams/[teamId]` — both use `"use client"` and reuse `KanbanHeader`.
+- `[teamId]/page.tsx` uses React 19 `use(params)` to unwrap the params Promise.
+- Modal pattern: `body.style.overflow = 'hidden'` + escape key + backdrop click. Used across all modals.
+- No test framework installed — no runnable tests for Teams. Gap documented in handoff.
+- Employee picker for Add Member is a placeholder (raw UUID input); awaits Employees module.
+- Concurrent async state pattern: use `Set<string>` (not a single string) for per-row pending state (e.g. `removingProfileIds`).
+- Member count (`memberCount`) is `null` pending backend aggregate; see `docs/handoffs/frontend-to-backend-teams-member-count.md`.
+- L-2 aria-current pattern: `usePathname()` + `pathname.startsWith(route)` → `aria-current="page"` on nav links.
