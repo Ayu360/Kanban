@@ -19,7 +19,7 @@ This document reflects all fixes applied in response to the Database Reviewer's 
 - **M-2**: `check_team_member_company_match` converted to SECURITY DEFINER with precise error distinction: genuine missing row = `foreign_key_violation`; cross-company attempt = `check_violation`.
 - **M-3**: Redundant `idx_teams_company_id` removed; `idx_teams_company_id_name_lower` already covers leading-column prefix scans.
 - **L-1**: Explicit NULL check added in the RPC before trim, so NULL, empty, whitespace-only, and oversized names all raise distinct `check_violation` errors.
-- **L-2**: SQL comments added to `teams_select_member` and `team_members_select_member` RLS policies documenting PostgreSQL's no-recursion guarantee for same-table subqueries.
+- **L-2**: SQL comments added to `teams_select_member` and `team_members_select_member` RLS policies documenting PostgreSQL's no-recursion guarantee for same-table subqueries. **CORRECTED 2026-08-16:** the no-recursion claim was factually wrong — the policies produced `infinite recursion detected in policy for relation "team_members"` at runtime for every caller. Both policies have since been rewritten to call a `SECURITY DEFINER` helper `public.is_team_member(uuid)` that bypasses RLS on the inner read. See `20260816000001_fix_team_members_rls_recursion.sql` and `database-to-backend-teams-rls-fix.md`.
 
 ---
 
@@ -548,11 +548,13 @@ The following verifications are **structural/logical** — they were performed b
 - All three branches raise `check_violation` with distinct messages.
 - Result: NULL, empty, whitespace-only, and oversized names produce normalized validation errors rather than raw NOT NULL constraint violations.
 
-### L-2 — RLS self-reference comment verified by inspection
+### L-2 — RLS self-reference comment verified by inspection (SUPERSEDED)
 
-- Lines 592–614: `teams_select_member` policy comment explains that the EXISTS subquery on `public.team_members` does not re-enter the outer policy (no recursion).
-- Lines 730–751: `team_members_select_member` policy comment makes the same point for the self-referential subquery on `public.team_members tm_self`.
-- Result: the non-obvious behavior is documented inline for future maintainers.
+**Status:** the "verified by inspection" conclusion was wrong. Both self-referential policies produced `infinite recursion detected in policy for relation "team_members"` at runtime, blocking every caller from reading `/teams`.
+
+**Fix migration:** `20260816000001_fix_team_members_rls_recursion.sql` replaces both policies with calls to a `SECURITY DEFINER` helper `public.is_team_member(uuid)` that bypasses RLS on the inner read of `team_members`, breaking the recursion path. Behavior for admins and members is unchanged; FR-07 is preserved. See `docs/handoffs/database-to-backend-teams-rls-fix.md`.
+
+**Lesson:** self-referential RLS predicates and PostgreSQL policy re-entry semantics are the wrong thing to trust on inspection. The runtime check is the ground truth. Future RLS work should be paired with a pgTAP or integration test that actually executes the policy against a live database, not just reviewed as SQL.
 
 ### Integration tests the Backend Agent should run
 
