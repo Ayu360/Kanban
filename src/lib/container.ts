@@ -29,6 +29,8 @@ import { SupabaseAuthRepository } from "@/features/auth/repositories/SupabaseAut
 import { AuthService } from "@/features/auth/services/authService";
 import { SupabaseTeamsRepository } from "@/features/teams/repositories/SupabaseTeamsRepository";
 import { TeamsService } from "@/features/teams/services/teamsService";
+import { SupabaseEmployeesRepository } from "@/features/employees/repositories/SupabaseEmployeesRepository";
+import { EmployeesService } from "@/features/employees/services/employeesService";
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -68,4 +70,24 @@ const teamsService = new TeamsService(teamsRepository);
  */
 export function getTeamsService(): TeamsService {
   return teamsService;
+}
+
+// ---------------------------------------------------------------------------
+// Employees
+// ---------------------------------------------------------------------------
+
+// Concrete implementation selection.
+// To swap backends: change this import and the constructor argument below.
+const employeesRepository = new SupabaseEmployeesRepository();
+
+// Service instance — depends on EmployeesRepository interface, not the implementation.
+const employeesService = new EmployeesService(employeesRepository);
+
+/**
+ * Returns the singleton EmployeesService.
+ * Call this from Server Actions and server-side code.
+ * Do not call this from Client Components or browser hooks.
+ */
+export function getEmployeesService(): EmployeesService {
+  return employeesService;
 }
