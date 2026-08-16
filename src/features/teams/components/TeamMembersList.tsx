@@ -18,7 +18,7 @@
  * never mutated — search is a pure client-side derived view.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTeamMembers } from "../hooks/useTeamMembers";
 import { useRemoveTeamMember } from "../hooks/useRemoveTeamMember";
 import { useAddTeamMember } from "../hooks/useAddTeamMember";
@@ -35,6 +35,12 @@ export default function TeamMembersList({
   isAdmin,
 }: TeamMembersListProps) {
   const { members, isLoading, error } = useTeamMembers(teamId);
+
+  // M-2: Derive existing member IDs so AddMemberModal can filter them out.
+  const existingMemberIds = useMemo(
+    () => new Set(members.map((m) => m.profileId)),
+    [members]
+  );
   const removeMutation = useRemoveTeamMember();
   const addMutation = useAddTeamMember();
 
@@ -276,7 +282,7 @@ export default function TeamMembersList({
       {/* Add member modal */}
       {addModalOpen && (
         <AddMemberModal
-          teamId={teamId}
+          existingMemberIds={existingMemberIds}
           isPending={addMutation.isPending}
           errorMessage={addError}
           onSubmit={handleAddMember}

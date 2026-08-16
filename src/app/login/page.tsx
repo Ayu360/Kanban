@@ -32,6 +32,18 @@ function LoginForm() {
 
   const redirectTo = searchParams.get("redirect") ?? "/kanban";
 
+  // Middleware-injected status errors — shown above the login form.
+  // 'deactivated' — admin blocked the account.
+  // 'pending'     — invited user tried to access the app before accepting.
+  // Unrecognized values are silently ignored (no message shown).
+  const statusError = searchParams.get("error");
+  const statusErrorMessage =
+    statusError === "deactivated"
+      ? "Your account has been deactivated. Please contact your administrator."
+      : statusError === "pending"
+        ? "Your invitation is pending. Please check your email to complete account setup."
+        : null;
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -67,6 +79,17 @@ function LoginForm() {
             Sign in to your Kanban account
           </p>
         </div>
+
+        {/* Middleware-injected status error — shown before the login form */}
+        {statusErrorMessage && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          >
+            {statusErrorMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <input type="hidden" name="redirectTo" value={redirectTo} />

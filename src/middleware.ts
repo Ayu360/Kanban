@@ -66,6 +66,23 @@ const PUBLIC_PATHS = new Set([
   // C-2: The PKCE callback route must be public — the user clicking the
   // password reset email link is unauthenticated when they arrive here.
   "/api/auth/callback",
+  // Invite-acceptance callback — the invited user arrives here unauthenticated
+  // or with a fresh session immediately after accepting the magic link.
+  // The page calls activateInvitedEmployeeAction to transition pending → active.
+  "/api/auth/invite-callback",
+]);
+
+/**
+ * Routes where a 'pending' user IS allowed to proceed.
+ * The invite-acceptance callback page and its API route must be reachable
+ * even if the invited user's JWT carries status='pending'.
+ *
+ * NOTE: This set contains ONLY routes a pending user legitimately needs.
+ * Do not add application routes here — pending users should not access the app.
+ */
+const PENDING_ALLOWED_PATHS = new Set([
+  "/api/auth/invite-callback",
+  "/accept-invite",
 ]);
 
 /** Auth routes: redirect to app if the user is already authenticated. */
@@ -127,6 +144,60 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isAuthenticated = !!user;
+
+  // -------------------------------------------------------------------------
+  // Status claim checks (Employees module — JWT hook adds `status` to app_metadata)
+  // -------------------------------------------------------------------------
+  // These checks run BEFORE the auth-only and public-path guards so that a
+  // deactivated or pending user with a valid session cannot access the app.
+  //
+  // The `status` claim is written by the custom_access_token_hook (DB migration
+  // 20260816000002). It reflects the profiles.status column:
+  //   'active'      — normal user, allow through
+  //   'pending'     — invited but not yet accepted (should not have a valid
+  //                   session in normal flow — guard defensively per handoff)
+  //   'deactivated' — admin-deactivated, block immediately
+  //
+  // JWT staleness window: After deactivate_employee, the target's JWT remains
+  // valid until its next refresh (~1 hour) UNLESS the Server Action also called
+  // auth.admin.banUser (which revokes the session). The status='deactivated'
+  // check here provides the final safety net for the JWT-refresh path.
+  if (isAuthenticated && user) {
+    // Read the status claim set by the custom_access_token_hook.
+    // Using typeof guard rather than a cast — app_metadata values are unknown
+    // at runtime. If the claim is absent (pre-hook JWT or profile-not-found
+    // race), status is undefined and the strict equality checks below fall
+    // through without blocking the request.
+    const rawStatus = user.app_metadata?.status;
+    const status = typeof rawStatus === "string" ? rawStatus : undefined;
+
+    // Case: deactivated user with an active session (possible during the
+    // 1-hour JWT staleness window if the Auth ban did not fire or failed).
+    // Sign them out and redirect to login with an error indicator.
+    if (status === "deactivated") {
+      // Sign out to clear the session cookie so they cannot retry.
+      await supabase.auth.signOut();
+
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      redirectUrl.search = "";
+      redirectUrl.searchParams.set("error", "deactivated");
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    // Case: pending user accessing a non-invite-acceptance route.
+    // In normal flow, Supabase Auth does not establish a session until the
+    // invite is accepted — this branch is a defensive guard for edge cases.
+    if (status === "pending" && !PENDING_ALLOWED_PATHS.has(pathname)) {
+      // Do NOT sign out — the pending user needs their session to call
+      // activate_invited_employee from the invite-acceptance callback.
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      redirectUrl.search = "";
+      redirectUrl.searchParams.set("error", "pending");
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
 
   // Case 1: Authenticated user visiting an auth-only page (e.g. /login, /signup).
   // Redirect to the app so they don't see the login form again (PRD Edge Case 6).
