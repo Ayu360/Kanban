@@ -50,7 +50,19 @@ type: project
 - `[teamId]/page.tsx` uses React 19 `use(params)` to unwrap the params Promise.
 - Modal pattern: `body.style.overflow = 'hidden'` + escape key + backdrop click. Used across all modals.
 - No test framework installed — no runnable tests for Teams. Gap documented in handoff.
-- Employee picker for Add Member is a placeholder (raw UUID input); awaits Employees module.
+- AddMemberModal upgraded to employee picker (backed by `useEmployeeDirectory`) in 2026-08-15 Employees module PR.
 - Concurrent async state pattern: use `Set<string>` (not a single string) for per-row pending state (e.g. `removingProfileIds`).
 - Member count (`memberCount`) is `null` pending backend aggregate; see `docs/handoffs/frontend-to-backend-teams-member-count.md`.
 - L-2 aria-current pattern: `usePathname()` + `pathname.startsWith(route)` → `aria-current="page"` on nav links.
+
+## Employees Feature (implemented 2026-08-15)
+- Components in `src/features/employees/components/`: `EmployeesPageContent`, `EmployeeCard`, `InviteEmployeeModal`, `EmployeeConfirmDialog`.
+- Routes: `src/app/employees/` (admin management), `src/app/accept-invite/` (invite callback).
+- Hooks are backend-provided (read-only for frontend): `useEmployees`, `useEmployeeDirectory`, `useInviteEmployee`, `useChangeEmployeeRole`, `useDeactivateEmployee`, `useReactivateEmployee`, `useActivateInvitedEmployee`.
+- Query key factory: `employeesQueryKeys` exported from `useEmployees.ts`.
+- `EmployeeConfirmDialog` is a parameterized confirm dialog with `variant='default'|'destructive'` — candidate for promotion to shared component.
+- `useEmployeeDirectory()` result must be filtered `employees.filter(e => e.displayName !== null)` before rendering pickers (pending employees have null displayName).
+- `/accept-invite` is in middleware `PENDING_ALLOWED_PATHS` (line 85 of `src/middleware.ts`).
+- Login page (`src/app/login/page.tsx`) reads `?error=deactivated` / `?error=pending` from `useSearchParams()` and shows amber banner.
+- `EmployeesPageContent` uses two separate error banner + two separate Set-based pending trackers (one for role, one for status) to keep concurrent actions isolated.
+- `KanbanHeader` now shows "Employees" nav link to admins only (after Teams, before "How it works").

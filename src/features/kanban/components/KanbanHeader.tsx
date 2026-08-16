@@ -22,8 +22,12 @@ const KanbanHeader = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
 
-  // L-2: Determine whether the Teams nav link is the current page section.
+  // L-2: Determine which nav link is the current page section.
   const isTeamsActive = pathname.startsWith("/teams");
+  const isEmployeesActive = pathname.startsWith("/employees");
+
+  // Admin check for the Employees nav link (UX-only gate — backend authorizes).
+  const isAdmin = !!user && (user.role === "admin" || user.isPlatformAdmin);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -59,6 +63,16 @@ const KanbanHeader = () => {
           >
             Teams
           </Link>
+          {/* Employees link — admin-only (UX gate; backend authorizes authoritatively) */}
+          {isAdmin && (
+            <Link
+              href="/employees"
+              aria-current={isEmployeesActive ? "page" : undefined}
+              className="hidden text-sm font-medium text-slate-600 underline underline-offset-2 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 sm:block"
+            >
+              Employees
+            </Link>
+          )}
           <Link
             href="/how-it-works"
             className="hidden text-sm font-medium text-slate-600 underline underline-offset-2 transition hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 sm:block"

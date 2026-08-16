@@ -23,3 +23,13 @@ Last-admin lockout for DEACTIVATION is handled at the DB layer (G7 in `deactivat
 ---
 
 `employee_directory` view filters `status != 'deactivated'` — meaning PENDING employees ARE included in the directory. Handoff doc notes this and flags it as an open question for product. Client-side filter by `displayName !== null` can exclude pending employees from pickers if needed.
+
+---
+
+Frontend Employees module patterns (reviewed 2026-08-15):
+- `EmployeesPageContent` uses `useState<Set<string>>` per-row loading per M-3 Teams pattern; confirmed correct.
+- `useFocusTrap(true)` (always-open) used for always-mounted modals (InviteEmployeeModal, AddMemberModal); `useFocusTrap(isOpen)` for toggled dialogs (EmployeeConfirmDialog). Both are correct per Teams pattern.
+- `AddMemberModal` has a `teamId` prop declared in interface but NOT destructured or used. This is a dead-prop bug — `onSubmit` receives the full `profileId` and the caller (TeamMembersList) passes teamId to its own mutation, not through AddMemberModal.
+- Listbox in AddMemberModal lacks ArrowUp/ArrowDown keyboard navigation — uses `<button role="option">` click-only selection; WAI-ARIA listbox requires keyboard navigation of options via arrow keys.
+- EmployeeConfirmDialog does NOT focus the Cancel button first on destructive variant. useFocusTrap focuses first focusable element = Cancel button because Cancel comes before Confirm in DOM order. This is actually WCAG-safe by DOM order, not autoFocus.
+- `/accept-invite` success state is missing `role="status"` / `aria-live` — screen readers may not announce the "Account activated!" message before the redirect fires.
