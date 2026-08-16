@@ -1,2 +1,3 @@
 - [User Profile](user_role.md) — developer building a Kanban/work management SaaS on Next.js + Supabase
 - [Project Context](project_kanban.md) — Kanban work management platform: architecture, ADR conventions, key patterns
+- [RLS Recursion Fix Pattern](project_rls_patterns.md) — SECURITY DEFINER helper pattern for breaking self-referential RLS; project convention since 20260816000001

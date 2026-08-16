@@ -80,6 +80,30 @@ Without SECURITY DEFINER, a cross-company attempt would hide the parent row via 
 
 B-tree composite indexes cover leading-column prefix scans. A single-column index on `company_id` is redundant when a composite index `(company_id, ...)` already exists. Drop the single-column index. Established via M-3 finding in Teams migration review.
 
+## Self-referential RLS recursion pattern
+
+PostgreSQL DOES re-enter all active permissive policies when a subquery inside a
+policy expression touches the same table the policy is defined on. This causes
+"infinite recursion detected in policy for relation X" (error code 42P17). The
+fix is a SECURITY DEFINER helper function that bypasses RLS on the target table:
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_team_member(_team_id uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = ''
+AS $$ SELECT EXISTS (
+  SELECT 1 FROM public.team_members
+  WHERE team_id = _team_id AND profile_id = auth.uid()
+); $$;
+REVOKE ALL ON FUNCTION public.is_team_member(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_team_member(uuid) TO authenticated;
+```
+
+Then policies reference the helper: `USING (public.is_team_member(team_id))`.
+
+This pattern was established in migration 20260816000001 to fix team_members_select_member
+and teams_select_member. The original comment claiming "PostgreSQL does NOT recurse" was
+factually wrong — the runtime 42P17 error is the proof.
+
 ## Functions
 
 - `public.custom_access_token_hook(event jsonb)` — JWT hook, SECURITY DEFINER, reads profiles.
@@ -89,6 +113,7 @@ B-tree composite indexes cover leading-column prefix scans. A single-column inde
 - `public.check_team_member_company_match()` — BEFORE INSERT trigger on team_members, SECURITY DEFINER. Cross-company membership guard with error distinction.
 - `public.check_board_company_id_match()` — BEFORE INSERT OR UPDATE trigger on boards, SECURITY DEFINER. Asserts boards.company_id = teams.company_id.
 - `public.check_column_company_id_match()` — BEFORE INSERT OR UPDATE trigger on columns, SECURITY DEFINER. Asserts columns.company_id = boards.company_id.
+- `public.is_team_member(_team_id uuid)` — SECURITY DEFINER STABLE helper. Returns true if auth.uid() has a team_members row for _team_id. RLS-bypassing read. GRANT EXECUTE TO authenticated only. Added in 20260816000001 to fix RLS recursion.
 
 ## Hook activation
 
