@@ -65,23 +65,27 @@ const PUBLIC_PATHS = new Set([
   "/reset-password/confirm",
   // C-2: The PKCE callback route must be public — the user clicking the
   // password reset email link is unauthenticated when they arrive here.
+  // NOTE: do not remove — password reset uses PKCE (?code= param) and depends
+  // on this route. It is a separate flow from the invite implicit flow below.
   "/api/auth/callback",
-  // Invite-acceptance callback — the invited user arrives here unauthenticated
-  // or with a fresh session immediately after accepting the magic link.
-  // The page calls activateInvitedEmployeeAction to transition pending → active.
-  "/api/auth/invite-callback",
+  // Invite-acceptance page — Supabase inviteUserByEmail uses the implicit flow:
+  // tokens arrive as a URL hash fragment (#access_token=...&type=invite) which
+  // the server never sees. The invitee's browser hits /accept-invite with no
+  // session cookie, so the page must be publicly reachable for the client-side
+  // Supabase SDK to process the hash and establish the session.
+  "/accept-invite",
 ]);
 
 /**
  * Routes where a 'pending' user IS allowed to proceed.
- * The invite-acceptance callback page and its API route must be reachable
- * even if the invited user's JWT carries status='pending'.
+ * After the browser client processes the hash fragment on /accept-invite, the
+ * invitee's session carries status='pending'. This set lets them stay on the
+ * page to complete account setup instead of being redirected to /login.
  *
  * NOTE: This set contains ONLY routes a pending user legitimately needs.
  * Do not add application routes here — pending users should not access the app.
  */
 const PENDING_ALLOWED_PATHS = new Set([
-  "/api/auth/invite-callback",
   "/accept-invite",
 ]);
 

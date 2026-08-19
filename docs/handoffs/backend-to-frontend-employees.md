@@ -158,13 +158,14 @@ All return `ActionResult<T>` — a discriminated union. Always check `result.suc
 This route handles the Supabase Auth magic link redirect after an invited employee clicks their invitation email and sets their password.
 
 **Flow:**
-1. Supabase Auth establishes a session (the user arrives with a valid `access_token` in the URL hash or PKCE code in the query string — see existing `/api/auth/callback` for the PKCE pattern).
-2. After session is confirmed, call `useActivateInvitedEmployee().mutate()`.
-3. On success (`result.success === true`): redirect to `/kanban` (the default post-login path).
-4. On error with `result.error.code === 'FORBIDDEN'` and the message about "deactivated": show an error page — "Your account has been deactivated. Contact your administrator."
-5. On any other error: show a retry prompt.
+1. The invitee's browser lands at `${APP_URL}/accept-invite#access_token=...&type=invite` (Supabase's admin `inviteUserByEmail` uses the implicit flow — tokens arrive in the URL hash, not as a PKCE `?code=` query param). The browser Supabase client (`detectSessionInUrl: true`) reads the hash on construction and establishes the session client-side.
+2. Ask the invitee to choose a password, then call `supabase.auth.updateUser({ password })` from the browser client.
+3. On password success, call `useActivateInvitedEmployee().mutate()` to flip status pending → active.
+4. On activate success, call `supabase.auth.refreshSession()` so the reissued JWT reads the now-active status via `custom_access_token_hook`, then redirect to `/kanban`.
+5. On error with `result.error.code === 'FORBIDDEN'` and the message about "deactivated": show an error page — "Your account has been deactivated. Contact your administrator."
+6. On any other error: show a retry prompt that retries **only** the failing step (do not re-prompt for the password if it was already saved).
 
-**Middleware note:** The middleware allows `status === 'pending'` users on `/accept-invite` and `/api/auth/invite-callback` — these paths are in `PENDING_ALLOWED_PATHS`. Do not add other paths to this set without a backend review.
+**Middleware note:** `/accept-invite` is in both `PUBLIC_PATHS` (so the browser can load the page and process the hash before a session cookie exists) and `PENDING_ALLOWED_PATHS` (so `status='pending'` sessions can stay on the page after the hash is processed). There is no `/api/auth/invite-callback` route — invites bypass the PKCE callback entirely.
 
 ### 3. Employee picker update (task assignment / team member addition)
 
