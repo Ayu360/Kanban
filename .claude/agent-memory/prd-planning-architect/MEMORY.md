@@ -1,0 +1,3 @@
+- [User Profile — Ayush Singh](user_profile.md) — Technical founder/lead engineer; expects deep DB/RLS detail; no need for abstraction explanations
+- [Kanban Platform — Project Context](project_kanban_context.md) — Shipped modules, key DB invariants, and 5 open questions blocking PRD-05 implementation
+- [PRD Style Preferences](feedback_prd_style.md) — Match 03-employees.md structure; numbered FRs, error-copy table, prose-only data model, open-questions section
