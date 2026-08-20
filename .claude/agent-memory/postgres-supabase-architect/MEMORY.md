@@ -1,3 +1,4 @@
 - [Schema and Migration Conventions](project_schema_conventions.md) — tables, naming, types, default company UUID, multi-tenancy rules established in Auth migration
 - [RLS Policy Patterns](rls_patterns.md) — JWT claim access, three-tier policy shape, grant conventions, function inventory
 - [Employees Module DB Layer](employees_module.md) — status column on profiles, JWT hook extended with status claim, four SECURITY DEFINER RPCs, no new tables
+- [Service-Role Grant Gap](service_role_grant_gap.md) — Supabase default bootstrap grants are absent; every migration must include service_role table grants or rely on 20260818000001

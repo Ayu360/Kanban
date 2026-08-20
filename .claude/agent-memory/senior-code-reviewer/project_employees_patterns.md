@@ -1,6 +1,6 @@
 ---
 name: Employees Module Backend Patterns
-description: Established patterns from the Employees module backend review (reviewed 2026-08-15); service-role RPC pattern, banUser ID contract, middleware status-claim guard
+description: Established patterns from the Employees module backend review (reviewed 2026-08-15) and hotfix review (2026-08-18); service-role RPC pattern, banUser ID contract, middleware status-claim guard, service-role table grants
 type: project
 ---
 
@@ -23,6 +23,20 @@ Last-admin lockout for DEACTIVATION is handled at the DB layer (G7 in `deactivat
 ---
 
 `employee_directory` view filters `status != 'deactivated'` — meaning PENDING employees ARE included in the directory. Handoff doc notes this and flags it as an open question for product. Client-side filter by `displayName !== null` can exclude pending employees from pickers if needed.
+
+---
+
+---
+
+Service-role table grants gap (resolved 2026-08-18): All prior migrations granted privileges to `authenticated` only. `SECURITY DEFINER` RPCs masked this because they run as postgres/superuser. Direct service-role table writes (INSERT/DELETE on `team_members`, `teams`, `profiles`) required migration `20260818000001_grant_service_role_table_privileges.sql`. `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public` is now set — future tables will inherit grants automatically. Pattern: any new direct service-role table write should be tested explicitly; do not assume grants are present on brand-new tables until after the default-privileges migration runs for the first time on a fresh DB.
+
+**Why:** Bug manifested as 42501 on `team_members` INSERT when `addMember` dropped SECURITY DEFINER wrapper.
+
+**How to apply:** When reviewing new direct service-role table writes (not via RPC), confirm this migration has already run on that DB. Post-20260818000001, future tables in public will be auto-granted. Pre-20260818000001 environments (fresh dev DB reset before migration) would still hit 42501 on any table created before this migration ran.
+
+---
+
+`removeMember` (SupabaseTeamsRepository) uses service-role with `.eq('team_id', teamId).eq('profile_id', profileId)` — no company_id scope filter. Cross-company safety relies entirely on the `team_members` table having a FK to `teams(id)`, combined with the service layer checking admin permission. The DB architect's concern about a missing company_id filter is partially mitigated because you cannot remove a member from a team you don't own unless you know both the teamId AND the profileId, and both IDs are UUIDs obtained through the authenticated session. Assessed as acceptable tech debt for current single-company MVP. If cross-company admin capabilities are ever added, `removeMember` should gain a company_id filter.
 
 ---
 

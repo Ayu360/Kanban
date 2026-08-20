@@ -14,13 +14,20 @@
  *      before the form renders. See the mount-effect comment for the full
  *      rationale — the global browser client stays PKCE (password reset needs it).
  *   2. Session check: if no session, show "invalid/expired link" state immediately.
- *   3. Show "Set your password" form — the invited user has no password yet.
+ *   3. Show "Set up your account" form — collects the user's display name AND
+ *      a new password. Display name is required because the AddMember picker
+ *      (and any other consumer of the employee_directory view) filters out
+ *      null-name entries; without a name here, newly-active users are invisible
+ *      in the picker after acceptance.
  *   4. On submit:
- *      a. Client-side validate: min 8 chars, fields match.
- *      b. supabase.auth.updateUser({ password }) — browser client, current session.
+ *      a. Client-side validate: name >= 2 chars (trimmed), password >= 8 chars, fields match.
+ *      b. UPDATE public.profiles SET display_name = ? WHERE id = auth.uid()
+ *         (authorized by profiles_update_own RLS + GRANT UPDATE(display_name)).
+ *         Runs FIRST — idempotent, no side effect on failure. Retry is safe.
+ *      c. supabase.auth.updateUser({ password }) — browser client, current session.
  *         On failure (e.g. weak password per Supabase policy): inline error, retry.
- *      c. On success: call activateInvitedEmployeeAction() to flip status pending→active.
- *      d. On activate success: redirect to /kanban.
+ *      d. On success: call activateInvitedEmployeeAction() to flip status pending→active.
+ *      e. On activate success: redirect to /kanban.
  *   5. If activate fails AFTER password is set: show retry that calls activate only
  *      (do NOT re-prompt for password — the user already has one).
  *
@@ -77,11 +84,13 @@ export default function AcceptInvitePage() {
   const activate = useActivateInvitedEmployee();
 
   const [pageState, setPageState] = useState<PageState>("checking");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [mismatch, setMismatch] = useState(false);
   const [activateErrorMessage, setActivateErrorMessage] = useState<string | null>(null);
 
-  // Focus refs — password input gets focus on mount; refs used for post-error focus.
+  // Focus refs — name input gets focus on mount; refs used for post-error focus.
+  const nameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
 
@@ -150,11 +159,11 @@ export default function AcceptInvitePage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Focus the password input when the form becomes visible.
+  // Focus the name input when the form becomes visible.
   useEffect(() => {
     if (pageState === "form") {
       // rAF so the element is in the DOM before we try to focus it.
-      const frameId = requestAnimationFrame(() => passwordRef.current?.focus());
+      const frameId = requestAnimationFrame(() => nameRef.current?.focus());
       return () => cancelAnimationFrame(frameId);
     }
   }, [pageState]);
@@ -228,12 +237,21 @@ export default function AcceptInvitePage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setNameError(null);
     setPasswordError(null);
     setMismatch(false);
 
     const form = e.currentTarget;
+    const name = (form.elements.namedItem("displayName") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
     const confirm = (form.elements.namedItem("confirmPassword") as HTMLInputElement).value;
+
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      setNameError("Please enter your name (at least 2 characters).");
+      nameRef.current?.focus();
+      return;
+    }
 
     const validation = validatePassword(password, confirm);
 
@@ -252,18 +270,42 @@ export default function AcceptInvitePage() {
     setPageState("submitting");
 
     const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase.auth.updateUser({ password });
 
-    if (error) {
-      // Supabase returns the server-side policy rejection here (e.g. too weak).
-      setPasswordError(error.message);
+    // Fetch the caller's id (needed for the profiles UPDATE .eq() clause).
+    // getUser() validates the JWT server-side rather than trusting local storage.
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      // Session lost between mount and submit — send back to invalid-link state.
+      setPageState("no-session");
+      return;
+    }
+
+    // 1. UPDATE display_name first — idempotent, no auth-side effect if it fails.
+    //    Authorized by profiles_update_own RLS + GRANT UPDATE(display_name).
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ display_name: trimmedName })
+      .eq("id", userData.user.id);
+
+    if (profileError) {
+      setNameError("Could not save your name. Please try again.");
       setPageState("form");
-      // Focus back to password after the state update renders.
+      requestAnimationFrame(() => nameRef.current?.focus());
+      return;
+    }
+
+    // 2. Set the password.
+    const { error: passwordUpdateError } = await supabase.auth.updateUser({ password });
+
+    if (passwordUpdateError) {
+      // Supabase returns the server-side policy rejection here (e.g. too weak).
+      setPasswordError(passwordUpdateError.message);
+      setPageState("form");
       requestAnimationFrame(() => passwordRef.current?.focus());
       return;
     }
 
-    // Password set successfully — now activate the profile.
+    // 3. Activate the profile (pending → active).
     runActivate();
   }
 
@@ -330,19 +372,49 @@ export default function AcceptInvitePage() {
           </div>
         )}
 
-        {/* Set-password form */}
+        {/* Set-up form */}
         {(pageState === "form" || pageState === "submitting") && (
           <>
             <div className="mb-6 text-center">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-                Set your password
+                Set up your account
               </h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Choose a password to complete your account setup.
+                Tell us your name and choose a password to finish signing up.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} noValidate aria-busy={pageState === "submitting"} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="displayName"
+                  className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  Full name
+                </label>
+                <input
+                  ref={nameRef}
+                  id="displayName"
+                  name="displayName"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  disabled={isInFlight}
+                  placeholder="Your name"
+                  aria-describedby={nameError ? "name-error" : undefined}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-sky-400"
+                />
+                {nameError && (
+                  <p
+                    id="name-error"
+                    role="alert"
+                    className="mt-1.5 text-xs text-red-600 dark:text-red-400"
+                  >
+                    {nameError}
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label
                   htmlFor="password"
@@ -423,10 +495,10 @@ export default function AcceptInvitePage() {
                       className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
                       aria-hidden
                     />
-                    Setting password...
+                    Setting up your account...
                   </>
                 ) : (
-                  "Set password and continue"
+                  "Create account and continue"
                 )}
               </button>
             </form>

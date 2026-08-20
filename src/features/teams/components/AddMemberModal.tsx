@@ -20,8 +20,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useEmployeeDirectory } from "@/features/employees/hooks/useEmployeeDirectory";
+import { employeesQueryKeys } from "@/features/employees/hooks/useEmployees";
 
 interface AddMemberModalProps {
   existingMemberIds: Set<string>;
@@ -44,6 +46,18 @@ export default function AddMemberModal({
 
   // AddMemberModal is always mounted when visible, so isOpen is always true.
   const containerRef = useFocusTrap(true);
+
+  const queryClient = useQueryClient();
+
+  // Invalidate the directory cache on mount. TanStack Query's cache lives in
+  // the current browser session; when an invitee (in a different session) sets
+  // their name via /accept-invite, this admin session has no way to know until
+  // the 5-minute staleTime elapses. The AddMember modal is a rare interactive
+  // event, so refetching once per open is cheap and guarantees the picker
+  // reflects any recently-activated employees.
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: employeesQueryKeys.directory() });
+  }, [queryClient]);
 
   const { employees, isLoading: directoryLoading } = useEmployeeDirectory();
 
