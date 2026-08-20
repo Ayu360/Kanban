@@ -24,7 +24,7 @@ This module depends on Authentication (01-authentication.md). It should be imple
 # Non Goals
 
 - Platform admin management via the customer-facing UI (granting or revoking `is_platform_admin` from the UI). The flag exists in the schema and the bootstrap sets it; an admin console UI is post-MVP.
-- Hard deletion of employee records — deactivation is the MVP mechanism. Deletion may be added post-MVP.
+- Hard/soft deletion of employee records and invitation cancellation/resend — covered by a separate follow-up module (see `05-employee-lifecycle-deletion.md`). This module (03) ships only deactivation/reactivation.
 - Employee self-service profile editing beyond what Supabase Auth provides (e.g., changing their own display name) — post-MVP.
 - Bulk import of employees (CSV upload, directory sync, SCIM) — post-MVP.
 - Employee skill or department metadata — post-MVP.
@@ -199,9 +199,9 @@ Described in prose only. SQL lives in `supabase/migrations/`.
 # Future Enhancements
 
 - Platform admin management UI (granting and revoking `is_platform_admin` from a dedicated admin console).
-- Hard deletion of employee records with data reassignment (e.g., unassign all tasks before deletion).
+- Hard/soft deletion, invite cancellation, and invite resend — specified in `05-employee-lifecycle-deletion.md`.
 - Employee self-service profile editing (display name, avatar).
 - Bulk employee import via CSV or directory integration (SCIM/LDAP).
-- Invitation expiry and re-send functionality.
+- Invitation expiry policy (invite tokens are refreshed by resend today per `05-employee-lifecycle-deletion.md`; a hard expiry window is future).
 - Employee activity log (last login, number of tasks owned).
 - Role-per-team model (a `role` column on `team_members`) once the base team membership model is established.

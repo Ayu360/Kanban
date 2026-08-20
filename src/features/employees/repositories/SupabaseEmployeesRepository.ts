@@ -42,6 +42,7 @@ import {
   getSupabaseServerClient,
   getSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
+import { APP_URL } from "@/lib/env.server";
 
 // ---------------------------------------------------------------------------
 // PostgreSQL / PostgREST error code constants
@@ -382,10 +383,36 @@ export class SupabaseEmployeesRepository implements EmployeesRepository {
     const serviceClient = getSupabaseServiceRoleClient();
 
     // Step 1: create the auth user via the Auth admin invite API.
-    // This sends the invitation email with the magic link.
+    // This sends the invitation email with a magic link that points to:
+    //   {APP_URL}/accept-invite
+    //
+    // Supabase's inviteUserByEmail uses the IMPLICIT flow — tokens arrive in the
+    // URL hash fragment (#access_token=...&type=invite), NOT as a ?code= query
+    // param. Hash fragments are never sent to the server, so routing through
+    // /api/auth/callback (which expects a PKCE ?code= param) would fail.
+    //
+    // Flow:
+    //   1. Invitee clicks the link → browser navigates to {APP_URL}/accept-invite
+    //      with #access_token=...&type=invite in the URL hash.
+    //   2. The browser-side Supabase client (detectSessionInUrl: true, the SDK
+    //      default) reads the hash fragment and establishes the session
+    //      client-side.
+    //   3. /accept-invite renders the set-password + display-name form.
+    //   4. On submit, activateInvitedEmployeeAction is called to transition
+    //      the profile from status='pending' to status='active'.
+    //
+    // Required Dashboard config: the redirectTo URL must appear on the Supabase
+    // Dashboard > Authentication > URL Configuration > Redirect URLs allowlist —
+    // otherwise Supabase silently falls back to SITE_URL and invite links break.
+    // Ensure the following (or a wildcard covering it) is listed for every
+    // deployed environment:
+    //   {APP_URL}/accept-invite
+    // e.g. http://localhost:3000/accept-invite, https://<your-domain>/accept-invite
+    // A wildcard like http://localhost:3000/** covers this path for local dev.
     const { data: inviteData, error: inviteError } =
       await serviceClient.auth.admin.inviteUserByEmail(email, {
         data: {},
+        redirectTo: `${APP_URL}/accept-invite`,
       });
 
     if (inviteError) {

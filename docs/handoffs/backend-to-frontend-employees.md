@@ -155,16 +155,21 @@ All return `ActionResult<T>` — a discriminated union. Always check `result.suc
 
 ### 2. Route: `/accept-invite` — Invite acceptance callback
 
-This route handles the Supabase Auth magic link redirect after an invited employee clicks their invitation email and sets their password.
+This route handles the Supabase Auth magic link redirect after an invited employee clicks their invitation email, provides their name, and sets their password.
 
 **Flow:**
-1. Supabase Auth establishes a session (the user arrives with a valid `access_token` in the URL hash or PKCE code in the query string — see existing `/api/auth/callback` for the PKCE pattern).
-2. After session is confirmed, call `useActivateInvitedEmployee().mutate()`.
-3. On success (`result.success === true`): redirect to `/kanban` (the default post-login path).
+1. The invitee's browser lands at `${APP_URL}/accept-invite#access_token=...&type=invite` (Supabase's admin `inviteUserByEmail` uses the implicit flow — tokens arrive in the URL hash, not as a PKCE `?code=` query param). The page manually parses the hash and calls `supabase.auth.setSession()` because `@supabase/ssr`'s `createBrowserClient` defaults to `flowType: 'pkce'` and ignores hash fragments.
+2. Ask the invitee to enter their full name AND choose a password. Both are required. The display name is required because `employee_directory` consumers (e.g. the AddMember picker) filter out null-name entries — without a name here, newly-active users are invisible in pickers after acceptance.
+3. On submit, in order:
+   a. `UPDATE public.profiles SET display_name = ? WHERE id = auth.uid()` (authorized by `profiles_update_own` RLS + column-level `GRANT UPDATE (display_name)`). Runs first — idempotent, no auth-side effect on failure.
+   b. `supabase.auth.updateUser({ password })` — sets the password.
+   c. `useActivateInvitedEmployee().mutate()` — flips status pending → active.
+   d. `supabase.auth.refreshSession()` — reissues the JWT so `custom_access_token_hook` reads the now-active status. Without this, middleware would still see `status='pending'` and redirect to `/login?error=pending`.
+   e. `router.replace('/kanban')`.
 4. On error with `result.error.code === 'FORBIDDEN'` and the message about "deactivated": show an error page — "Your account has been deactivated. Contact your administrator."
-5. On any other error: show a retry prompt.
+5. On any other error: show a retry prompt that retries **only** the failing step (do not re-prompt for the password if it was already saved).
 
-**Middleware note:** The middleware allows `status === 'pending'` users on `/accept-invite` and `/api/auth/invite-callback` — these paths are in `PENDING_ALLOWED_PATHS`. Do not add other paths to this set without a backend review.
+**Middleware note:** `/accept-invite` is in both `PUBLIC_PATHS` (so the browser can load the page and process the hash before a session cookie exists) and `PENDING_ALLOWED_PATHS` (so `status='pending'` sessions can stay on the page after the hash is processed). There is no `/api/auth/invite-callback` route — invites bypass the PKCE callback entirely.
 
 ### 3. Employee picker update (task assignment / team member addition)
 
@@ -176,11 +181,13 @@ The directory view:
 - Is already scoped to the caller's company (JWT claim — no `companyId` filter needed).
 - Deactivated employees are correctly excluded at the view layer (`WHERE status != 'deactivated'`).
 
-**Pending employees ARE included in the directory.** The `employee_directory` view filters `status != 'deactivated'` only. Pending employees have `displayName = null` because they have not completed signup yet. Until product confirms the desired behavior, the frontend MUST apply a client-side filter in pickers:
+**Pending employees ARE included in the directory.** The `employee_directory` view filters `status != 'deactivated'` only. Pending employees have `displayName = null` because they have not completed the accept-invite form yet. The frontend MUST apply a client-side filter in pickers to exclude them:
 
 ```ts
 employees.filter(e => e.displayName !== null)
 ```
+
+After the accept-invite form is completed, `display_name` is populated (the form makes the field required — see route section above), so newly-active users appear in pickers as soon as the caller's `useEmployeeDirectory()` cache refetches.
 
 Deactivated employees are correctly excluded at the view layer.
 
