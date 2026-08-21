@@ -6,3 +6,4 @@
 - [User: Developer Profile](user_profile.md) — Owner of a Next.js Kanban platform evolving to production Work Management Platform
 - [Feedback: Use yarn not pnpm](feedback_package_manager.md) — Project uses yarn; never use pnpm
 - [Project: Employee Lifecycle Backend Implementation](project_employee_lifecycle_backend.md) — PRD 05 Phase 2 backend complete; audit log, 5 new actions, auth-sweep cron, gap migrations, frontend handoff done
+- [Project: Tasks Backend Implementation](project_tasks_backend.md) — PRD 04 Phase 2 backend complete; client-side writes (ADR-0015), no container wiring, optimistic move hook, assignee guard, frontend handoff done
