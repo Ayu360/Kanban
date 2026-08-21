@@ -3,3 +3,4 @@
 - [RLS Recursion Fix Pattern](project_rls_patterns.md) — SECURITY DEFINER helper pattern for breaking self-referential RLS; project convention since 20260816000001
 - [Employees Module Backend Patterns](project_employees_patterns.md) — service-role RPC gaps, banUser ID contract, pending-in-directory behavior; active HIGH finding on last-admin deactivation path
 - [Tasks Module (PRD 04) Patterns](project_tasks_patterns.md) — singleton pattern, query key convention, isOverdue timezone bug, missing assignee on card (YELLOW verdict 2026-08-21)
+- [UI/UX Patterns and Conventions](project_ui_patterns.md) — dark mode input pattern, burger menu, modal conventions, search bar gating, AppFooter deleted

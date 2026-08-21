@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./Providers";
-import AppFooter from "@/components/AppFooter";
 
 const baseUrl =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -29,7 +28,6 @@ export default function RootLayout({
         <div className="min-h-0 flex-1">
           <Providers>{children}</Providers>
         </div>
-        <AppFooter />
       </body>
     </html>
   );
