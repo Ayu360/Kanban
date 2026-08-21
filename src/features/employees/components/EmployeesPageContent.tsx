@@ -4,49 +4,121 @@
  * EmployeesPageContent — client-side content for the /employees route.
  *
  * Orchestrates:
- *   - useEmployees (read — admin-only)
- *   - useChangeEmployeeRole, useDeactivateEmployee, useReactivateEmployee (mutations)
- *   - Role-based UI: admin sees management controls; employee sees read-only directory view
+ *   - useEmployees (read — admin-only; FE-4: grace-window polling)
+ *   - useChangeEmployeeRole, useDeactivateEmployee, useReactivateEmployee (existing)
+ *   - useSoftDeleteEmployee, useHardDeleteEmployee, useUndoScheduledDeletion (PRD 05)
+ *   - useCancelInvite, useResendInvite (PRD 05)
+ *   - Role-based UI: admin sees management controls; employee sees read-only view
  *   - Loading / error / empty states
  *   - Client-side search/filter by name or email
  *   - Dismissible error banners (Teams pattern)
  *
  * State managed here (UI state — NOT server state):
  *   - inviteModalOpen: boolean
- *   - roleTarget: AdminEmployee | null (who is being role-changed)
- *   - roleDirection: 'promote' | 'demote' | null
- *   - statusTarget: AdminEmployee | null (who is being deactivated/reactivated)
- *   - statusAction: 'deactivate' | 'reactivate' | null
+ *   - roleTarget / roleDirection — role-change dialog
+ *   - statusTarget / statusAction — deactivate/reactivate dialog
+ *   - deletionTarget / deletionAction — soft-delete, hard-delete, undo, cancel-invite, resend-invite
  *   - searchQuery: string
- *   - banner error messages (per action, dismissible)
- *   - per-employee in-flight Sets (role and status, to support concurrent actions)
+ *   - banner error messages (per action group, dismissible)
+ *   - per-employee in-flight Sets (role, status, deletion — concurrent action isolation)
  *
- * Server state lives entirely in TanStack Query (useEmployees, mutation hooks).
- * No employee data is duplicated into Redux.
+ * Server state lives entirely in TanStack Query. No employee data in Redux.
  *
  * Non-admin employees: shown a read-only directory prompt (no management controls).
- * The directory itself lives in separate feature components; this page just shows
- * a "no access" message per the Teams pattern.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useEmployees } from "../hooks/useEmployees";
 import { useChangeEmployeeRole } from "../hooks/useChangeEmployeeRole";
 import { useDeactivateEmployee } from "../hooks/useDeactivateEmployee";
 import { useReactivateEmployee } from "../hooks/useReactivateEmployee";
+import { useSoftDeleteEmployee } from "../hooks/useSoftDeleteEmployee";
+import { useHardDeleteEmployee } from "../hooks/useHardDeleteEmployee";
+import { useUndoScheduledDeletion } from "../hooks/useUndoScheduledDeletion";
+import { useCancelInvite } from "../hooks/useCancelInvite";
+import { useResendInvite } from "../hooks/useResendInvite";
+import { employeesQueryKeys } from "../hooks/useEmployees";
+import { useQueryClient } from "@tanstack/react-query";
 import EmployeeCard from "./EmployeeCard";
 import InviteEmployeeModal from "./InviteEmployeeModal";
 import EmployeeConfirmDialog from "./EmployeeConfirmDialog";
 import type { AdminEmployee } from "../types";
 
+// ---------------------------------------------------------------------------
+// DismissibleErrorBanner — inline error notification with dismiss button.
+// Declared outside the page component so it is not re-created on every render.
+// ---------------------------------------------------------------------------
+
+function DismissibleErrorBanner({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+    >
+      <span>{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss error"
+        className="shrink-0 rounded p-0.5 text-red-500 transition hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-red-400 dark:hover:bg-red-900/40 dark:hover:text-red-300"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deletion dialog actions
+// ---------------------------------------------------------------------------
+
+type DeletionAction =
+  | "schedule-deletion"
+  | "delete-now"
+  | "cancel-scheduled-deletion"
+  | "cancel-invite"
+  | "resend-invite";
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function EmployeesPageContent() {
   const { user } = useCurrentUser();
   const { employees, isLoading, error } = useEmployees();
+  const queryClient = useQueryClient();
 
+  // Existing mutations
   const changeRoleMutation = useChangeEmployeeRole();
   const deactivateMutation = useDeactivateEmployee();
   const reactivateMutation = useReactivateEmployee();
+
+  // PRD 05 mutations
+  const softDeleteMutation = useSoftDeleteEmployee();
+  const hardDeleteMutation = useHardDeleteEmployee();
+  const undoScheduledDeletionMutation = useUndoScheduledDeletion();
+  const cancelInviteMutation = useCancelInvite();
+  const resendInviteMutation = useResendInvite();
 
   const isAdmin = !!user && (user.role === "admin" || user.isPlatformAdmin);
 
@@ -64,9 +136,28 @@ export default function EmployeesPageContent() {
   const [statusAction, setStatusAction] = useState<"deactivate" | "reactivate" | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
+  // Deletion-family dialog state (soft-delete, hard-delete, undo, cancel-invite, resend-invite).
+  const [deletionTarget, setDeletionTarget] = useState<AdminEmployee | null>(null);
+  const [deletionAction, setDeletionAction] = useState<DeletionAction | null>(null);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+
   // Per-employee in-flight tracking (concurrent action isolation, Teams pattern).
   const [pendingRoleIds, setPendingRoleIds] = useState<Set<string>>(new Set());
   const [pendingStatusIds, setPendingStatusIds] = useState<Set<string>>(new Set());
+  const [pendingDeletionIds, setPendingDeletionIds] = useState<Set<string>>(new Set());
+
+  // ---- Quorum check ----
+  // Determines whether a "delete self" action is permitted (another active admin exists).
+  // Memoized so it doesn't recalculate on every render.
+  const hasOtherAdmin = useMemo(() => {
+    if (!user) return false;
+    return employees.some(
+      (emp) =>
+        emp.role === "admin" &&
+        emp.status !== "deactivated" &&
+        emp.id !== user.id
+    );
+  }, [employees, user]);
 
   // ---- Handlers ----
 
@@ -159,7 +250,6 @@ export default function EmployeesPageContent() {
               setStatusTarget(null);
               setStatusAction(null);
             } else {
-              // Surface UNKNOWN_ERROR (partial deactivation — M-2) verbatim.
               setStatusError(result.error.message);
               setStatusTarget(null);
               setStatusAction(null);
@@ -210,6 +300,287 @@ export default function EmployeesPageContent() {
       );
     }
   };
+
+  // ---- Deletion-family handlers ----
+
+  const openDeletionDialog = (emp: AdminEmployee, action: DeletionAction) => {
+    setDeletionError(null);
+    setDeletionAction(action);
+    setDeletionTarget(emp);
+  };
+
+  const handleScheduleDeletion = (emp: AdminEmployee) =>
+    openDeletionDialog(emp, "schedule-deletion");
+
+  const handleDeleteNow = (emp: AdminEmployee) =>
+    openDeletionDialog(emp, "delete-now");
+
+  const handleCancelScheduledDeletion = (emp: AdminEmployee) =>
+    openDeletionDialog(emp, "cancel-scheduled-deletion");
+
+  const handleCancelInvite = (emp: AdminEmployee) =>
+    openDeletionDialog(emp, "cancel-invite");
+
+  const handleResendInvite = (emp: AdminEmployee) =>
+    openDeletionDialog(emp, "resend-invite");
+
+  const closeDeletionDialog = () => {
+    setDeletionTarget(null);
+    setDeletionAction(null);
+  };
+
+  const handleDeletionConfirm = () => {
+    if (!deletionTarget || !deletionAction) return;
+    if (pendingDeletionIds.has(deletionTarget.id)) return;
+    setDeletionError(null);
+
+    const targetId = deletionTarget.id;
+    setPendingDeletionIds((prev) => new Set(prev).add(targetId));
+
+    const clearPending = () => {
+      setPendingDeletionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+    };
+
+    if (deletionAction === "schedule-deletion") {
+      softDeleteMutation.mutate(targetId, {
+        onSuccess: (result) => {
+          clearPending();
+          if (result.success) {
+            closeDeletionDialog();
+          } else {
+            setDeletionError(result.error.message);
+            closeDeletionDialog();
+          }
+        },
+        onError: () => {
+          clearPending();
+          setDeletionError("Something went wrong. Please try again or contact support.");
+          closeDeletionDialog();
+        },
+      });
+      return;
+    }
+
+    if (deletionAction === "delete-now") {
+      hardDeleteMutation.mutate(targetId, {
+        onSuccess: (result) => {
+          clearPending();
+          if (result.success) {
+            closeDeletionDialog();
+          } else {
+            setDeletionError(result.error.message);
+            closeDeletionDialog();
+          }
+        },
+        onError: () => {
+          clearPending();
+          setDeletionError("Something went wrong. Please try again or contact support.");
+          closeDeletionDialog();
+        },
+      });
+      return;
+    }
+
+    if (deletionAction === "cancel-scheduled-deletion") {
+      undoScheduledDeletionMutation.mutate(targetId, {
+        onSuccess: (result) => {
+          clearPending();
+          closeDeletionDialog();
+          if (!result.success) {
+            setDeletionError(result.error.message);
+            return;
+          }
+          // Race case: cron already promoted the deletion.
+          if (!result.data.cancelled && result.data.reason === "already_deleted") {
+            setDeletionError(
+              "This account has already been deleted and cannot be restored."
+            );
+            // List was already invalidated unconditionally by the hook's onSuccess.
+          }
+          // Happy path: result.data.cancelled === true — no error to show.
+        },
+        onError: () => {
+          clearPending();
+          setDeletionError("Something went wrong. Please try again or contact support.");
+          closeDeletionDialog();
+        },
+      });
+      return;
+    }
+
+    if (deletionAction === "cancel-invite") {
+      cancelInviteMutation.mutate(targetId, {
+        onSuccess: (result) => {
+          clearPending();
+          if (result.success) {
+            closeDeletionDialog();
+          } else {
+            setDeletionError(result.error.message);
+            // Race: invite may have been accepted — trigger list refetch so
+            // the admin sees the employee as active.
+            queryClient.invalidateQueries({
+              queryKey: employeesQueryKeys.lists(),
+            });
+            closeDeletionDialog();
+          }
+        },
+        onError: () => {
+          clearPending();
+          setDeletionError("Something went wrong. Please try again or contact support.");
+          closeDeletionDialog();
+        },
+      });
+      return;
+    }
+
+    if (deletionAction === "resend-invite") {
+      if (!deletionTarget.email) {
+        clearPending();
+        setDeletionError("No email address found for this invitation.");
+        closeDeletionDialog();
+        return;
+      }
+      resendInviteMutation.mutate(
+        { targetProfileId: targetId, email: deletionTarget.email },
+        {
+          onSuccess: (result) => {
+            clearPending();
+            if (result.success) {
+              closeDeletionDialog();
+            } else {
+              setDeletionError(result.error.message);
+              // Race: invite may have been accepted — trigger list refetch.
+              queryClient.invalidateQueries({
+                queryKey: employeesQueryKeys.lists(),
+              });
+              closeDeletionDialog();
+            }
+          },
+          onError: () => {
+            clearPending();
+            setDeletionError("Something went wrong. Please try again or contact support.");
+            closeDeletionDialog();
+          },
+        }
+      );
+      return;
+    }
+  };
+
+  // ---- Dialog config ----
+
+  const roleDialogTitle =
+    roleDirection === "promote" ? "Promote to Admin" : "Demote to Employee";
+  const roleDialogDescription =
+    roleDirection === "promote"
+      ? `Promote ${roleTarget?.displayName ?? roleTarget?.email ?? "this employee"} to Admin? They will gain full management capabilities, including the ability to invite, promote, and deactivate employees.`
+      : `Demote ${roleTarget?.displayName ?? roleTarget?.email ?? "this admin"} to Employee? They will lose all management capabilities. They will need to sign out and back in for this change to take effect.`;
+
+  const statusDialogTitle =
+    statusAction === "deactivate" ? "Deactivate employee" : "Reactivate employee";
+  const statusDialogDescription =
+    statusAction === "deactivate"
+      ? `Deactivate ${statusTarget?.displayName ?? statusTarget?.email ?? "this employee"}? They will lose the ability to log in within the hour. Their tasks and history are preserved.`
+      : `Reactivate ${statusTarget?.displayName ?? statusTarget?.email ?? "this employee"}? They will be able to log in again with their existing credentials.`;
+
+  const isStatusDialogPending =
+    statusAction === "deactivate"
+      ? deactivateMutation.isPending
+      : reactivateMutation.isPending;
+
+  // Deletion-family dialog copy (per PRD 05 UX Spec / handoff).
+  type DeletionDialogConfig = {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    cancelLabel: string;
+    pendingLabel: string;
+    variant: "default" | "destructive";
+    isPending: boolean;
+  };
+
+  const deletionDialogConfig = useMemo((): DeletionDialogConfig => {
+    const name =
+      deletionTarget?.displayName ?? deletionTarget?.email ?? "this employee";
+    const email = deletionTarget?.email ?? "";
+
+    switch (deletionAction) {
+      case "schedule-deletion":
+        return {
+          title: "Schedule Deletion",
+          description: `This will schedule ${name} (${email}) for permanent deletion in 24 hours. Their access will be revoked immediately. You can cancel the deletion during this 24-hour window.`,
+          confirmLabel: "Schedule Deletion",
+          cancelLabel: "Cancel",
+          pendingLabel: "Scheduling...",
+          variant: "destructive",
+          isPending: softDeleteMutation.isPending,
+        };
+      case "delete-now":
+        return {
+          title: "Permanently Delete Employee",
+          description: `This will permanently remove ${name} (${email}) from the system. Their team memberships will be preserved for you to clean up manually. This action cannot be undone.`,
+          confirmLabel: "Delete Permanently",
+          cancelLabel: "Cancel",
+          pendingLabel: "Deleting...",
+          variant: "destructive",
+          isPending: hardDeleteMutation.isPending,
+        };
+      case "cancel-scheduled-deletion":
+        return {
+          title: "Cancel Scheduled Deletion",
+          description: `This will cancel the scheduled deletion for ${name} (${email}) and restore their access.`,
+          confirmLabel: "Cancel Deletion",
+          cancelLabel: "Keep Deletion",
+          pendingLabel: "Cancelling...",
+          variant: "default",
+          isPending: undoScheduledDeletionMutation.isPending,
+        };
+      case "cancel-invite":
+        return {
+          title: "Cancel Invitation",
+          description: `This will cancel the pending invitation for ${email} and remove their account. They will no longer be able to use the invite link.`,
+          confirmLabel: "Cancel Invitation",
+          cancelLabel: "Keep Invitation",
+          pendingLabel: "Cancelling...",
+          variant: "destructive",
+          isPending: cancelInviteMutation.isPending,
+        };
+      case "resend-invite":
+        return {
+          title: "Resend Invitation",
+          description: `This will send a fresh invitation to ${email}. The previous invite link will no longer work.`,
+          confirmLabel: "Resend",
+          cancelLabel: "Cancel",
+          pendingLabel: "Sending...",
+          variant: "default",
+          isPending: resendInviteMutation.isPending,
+        };
+      default:
+        return {
+          title: "",
+          description: "",
+          confirmLabel: "Confirm",
+          cancelLabel: "Cancel",
+          pendingLabel: "Processing...",
+          variant: "default",
+          isPending: false,
+        };
+    }
+  }, [
+    deletionAction,
+    deletionTarget,
+    softDeleteMutation.isPending,
+    hardDeleteMutation.isPending,
+    undoScheduledDeletionMutation.isPending,
+    cancelInviteMutation.isPending,
+    resendInviteMutation.isPending,
+  ]);
+
+  const isDeletionDialogPending = deletionDialogConfig.isPending;
 
   // ---- Non-admin view ----
   if (!isLoading && !isAdmin) {
@@ -278,27 +649,6 @@ export default function EmployeesPageContent() {
           return name.includes(normalizedQuery) || email.includes(normalizedQuery);
         });
 
-  // ---- Role dialog config ----
-  const roleDialogTitle =
-    roleDirection === "promote" ? "Promote to Admin" : "Demote to Employee";
-  const roleDialogDescription =
-    roleDirection === "promote"
-      ? `Promote ${roleTarget?.displayName ?? roleTarget?.email ?? "this employee"} to Admin? They will gain full management capabilities, including the ability to invite, promote, and deactivate employees.`
-      : `Demote ${roleTarget?.displayName ?? roleTarget?.email ?? "this admin"} to Employee? They will lose all management capabilities. They will need to sign out and back in for this change to take effect.`;
-
-  // ---- Status dialog config ----
-  const statusDialogTitle =
-    statusAction === "deactivate" ? "Deactivate employee" : "Reactivate employee";
-  const statusDialogDescription =
-    statusAction === "deactivate"
-      ? `Deactivate ${statusTarget?.displayName ?? statusTarget?.email ?? "this employee"}? They will lose the ability to log in within the hour. Their tasks and history are preserved.`
-      : `Reactivate ${statusTarget?.displayName ?? statusTarget?.email ?? "this employee"}? They will be able to log in again with their existing credentials.`;
-
-  const isStatusDialogPending =
-    statusAction === "deactivate"
-      ? deactivateMutation.isPending
-      : reactivateMutation.isPending;
-
   // ---- Render ----
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -335,66 +685,15 @@ export default function EmployeesPageContent() {
         </button>
       </div>
 
-      {/* Dismissible role-change error banner */}
+      {/* Error banners */}
       {roleError && (
-        <div
-          role="alert"
-          className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
-        >
-          <span>{roleError}</span>
-          <button
-            type="button"
-            onClick={() => setRoleError(null)}
-            aria-label="Dismiss error"
-            className="shrink-0 rounded p-0.5 text-red-500 transition hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-red-400 dark:hover:bg-red-900/40 dark:hover:text-red-300"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <DismissibleErrorBanner message={roleError} onDismiss={() => setRoleError(null)} />
       )}
-
-      {/* Dismissible status-change error banner */}
       {statusError && (
-        <div
-          role="alert"
-          className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
-        >
-          <span>{statusError}</span>
-          <button
-            type="button"
-            onClick={() => setStatusError(null)}
-            aria-label="Dismiss error"
-            className="shrink-0 rounded p-0.5 text-red-500 transition hover:bg-red-100 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 dark:text-red-400 dark:hover:bg-red-900/40 dark:hover:text-red-300"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+        <DismissibleErrorBanner message={statusError} onDismiss={() => setStatusError(null)} />
+      )}
+      {deletionError && (
+        <DismissibleErrorBanner message={deletionError} onDismiss={() => setDeletionError(null)} />
       )}
 
       {/* Search / filter */}
@@ -492,11 +791,19 @@ export default function EmployeesPageContent() {
                 isAdmin={isAdmin}
                 isSelf={emp.id === user?.id}
                 isRolePending={pendingRoleIds.has(emp.id)}
-                isStatusPending={pendingStatusIds.has(emp.id)}
+                isStatusPending={
+                  pendingStatusIds.has(emp.id) || pendingDeletionIds.has(emp.id)
+                }
+                hasOtherAdmin={hasOtherAdmin}
                 onPromote={handlePromote}
                 onDemote={handleDemote}
                 onDeactivate={handleDeactivate}
                 onReactivate={handleReactivate}
+                onScheduleDeletion={handleScheduleDeletion}
+                onDeleteNow={handleDeleteNow}
+                onCancelScheduledDeletion={handleCancelScheduledDeletion}
+                onCancelInvite={handleCancelInvite}
+                onResendInvite={handleResendInvite}
               />
             </li>
           ))}
@@ -542,6 +849,24 @@ export default function EmployeesPageContent() {
           if (!isStatusDialogPending) {
             setStatusTarget(null);
             setStatusAction(null);
+          }
+        }}
+      />
+
+      {/* Deletion-family confirmation dialog (schedule, hard-delete, undo, cancel-invite, resend) */}
+      <EmployeeConfirmDialog
+        isOpen={!!deletionTarget && !!deletionAction}
+        title={deletionDialogConfig.title}
+        description={deletionDialogConfig.description}
+        confirmLabel={deletionDialogConfig.confirmLabel}
+        cancelLabel={deletionDialogConfig.cancelLabel}
+        pendingLabel={deletionDialogConfig.pendingLabel}
+        variant={deletionDialogConfig.variant}
+        isPending={isDeletionDialogPending}
+        onConfirm={handleDeletionConfirm}
+        onCancel={() => {
+          if (!isDeletionDialogPending) {
+            closeDeletionDialog();
           }
         }}
       />

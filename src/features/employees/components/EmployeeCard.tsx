@@ -7,26 +7,33 @@
  *   - Display name (falling back to email for pending employees where displayName = null)
  *   - Email address
  *   - Role badge: Admin / Employee
- *   - Status badge: Active / Pending / Deactivated
- *   - Action buttons (visibility rules per PRD FR-03, FR-04, UI Requirements):
- *       Promote to Admin   — target.role === 'employee' && target.status === 'active' && !isSelf
- *       Demote to Employee — target.role === 'admin'    && target.status === 'active' && !isSelf
- *       Deactivate         — target.status === 'active'   && !isSelf
- *       Reactivate         — target.status === 'deactivated'
- *       (pending rows: no role or status controls — only reactivate is excluded too)
+ *   - Status badge: Active / Pending / Deactivated / Deletion Scheduled (PRD 05)
+ *   - Action buttons, gated by employee status and quorum rules:
+ *
+ *   Active employees (status='active', deletionScheduledAt=null):
+ *       Promote to Admin   — role=employee && !isSelf
+ *       Demote to Employee — role=admin    && !isSelf
+ *       Deactivate         — !isSelf
+ *       Schedule Deletion  — !isSelf && !isPlatformAdmin && hasOtherAdmin (if self)
+ *       Delete Now         — !isSelf && !isPlatformAdmin && hasOtherAdmin (if self)
+ *
+ *   Pending employees (status='pending'):
+ *       Cancel Invite   — always (for admins)
+ *       Resend Invite   — always (for admins)
+ *       (no role or status controls)
+ *
+ *   Grace-window employees (deletionScheduledAt !== null):
+ *       Cancel Scheduled Deletion — always (for admins)
+ *       (all other actions hidden)
+ *
+ *   Deactivated employees:
+ *       Reactivate — always (for admins)
+ *
+ * Platform admin rows: delete options absent entirely.
+ * Admin's own row: delete + schedule-deletion hidden unless another active
+ *   admin exists (hasOtherAdmin prop — quorum check done in the parent).
  *
  * Admin controls are UX-only gates. Backend validates authoritatively.
- *
- * Props:
- *   employee    — AdminEmployee record
- *   isAdmin     — whether the caller is admin/platform-admin
- *   isSelf      — whether this row is the caller's own row
- *   isRolePending  — whether a role mutation is in flight for this row
- *   isStatusPending — whether a deactivate/reactivate mutation is in flight
- *   onPromote   — open role-change dialog (→ admin)
- *   onDemote    — open role-change dialog (→ employee)
- *   onDeactivate — open deactivation dialog
- *   onReactivate — open reactivation dialog
  */
 
 import type { AdminEmployee } from "../types";
@@ -37,21 +44,38 @@ interface EmployeeCardProps {
   isSelf: boolean;
   isRolePending: boolean;
   isStatusPending: boolean;
+  /** Whether another active admin exists in the company (quorum check). */
+  hasOtherAdmin: boolean;
   onPromote: (employee: AdminEmployee) => void;
   onDemote: (employee: AdminEmployee) => void;
   onDeactivate: (employee: AdminEmployee) => void;
   onReactivate: (employee: AdminEmployee) => void;
+  onScheduleDeletion: (employee: AdminEmployee) => void;
+  onDeleteNow: (employee: AdminEmployee) => void;
+  onCancelScheduledDeletion: (employee: AdminEmployee) => void;
+  onCancelInvite: (employee: AdminEmployee) => void;
+  onResendInvite: (employee: AdminEmployee) => void;
 }
+
+type BadgeVariant =
+  | "admin"
+  | "employee"
+  | "active"
+  | "pending"
+  | "deactivated"
+  | "deletion-scheduled";
 
 /** Small badge component — keeps markup local. */
 function Badge({
   label,
   variant,
+  title,
 }: {
   label: string;
-  variant: "admin" | "employee" | "active" | "pending" | "deactivated";
+  variant: BadgeVariant;
+  title?: string;
 }) {
-  const classes: Record<typeof variant, string> = {
+  const classes: Record<BadgeVariant, string> = {
     admin:
       "inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
     employee:
@@ -62,8 +86,99 @@ function Badge({
       "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
     deactivated:
       "inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400",
+    "deletion-scheduled":
+      "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   };
-  return <span className={classes[variant]}>{label}</span>;
+  return (
+    <span className={classes[variant]} title={title}>
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Formats a UTC ISO 8601 deletion timestamp for display in the badge tooltip.
+ * Uses the browser's local timezone (consistent with native Date formatting).
+ * Example output: "Scheduled for Aug 21, 2026 at 12:00 PM"
+ */
+function formatDeletionTimestamp(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    const formatted = date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `Scheduled for ${formatted}`;
+  } catch {
+    return "Scheduled for deletion";
+  }
+}
+
+/** Small destructive action button. */
+function DestructiveButton({
+  label,
+  ariaLabel,
+  isPending,
+  onClick,
+}: {
+  label: string;
+  ariaLabel: string;
+  isPending: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      aria-label={ariaLabel}
+      className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+    >
+      {isPending && (
+        <span
+          className="h-3 w-3 animate-spin rounded-full border-2 border-red-300 border-t-red-600"
+          aria-hidden
+        />
+      )}
+      {label}
+    </button>
+  );
+}
+
+/** Small default action button. */
+function DefaultButton({
+  label,
+  ariaLabel,
+  isPending,
+  onClick,
+  colorClass,
+}: {
+  label: string;
+  ariaLabel: string;
+  isPending: boolean;
+  onClick: () => void;
+  colorClass: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      aria-label={ariaLabel}
+      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${colorClass}`}
+    >
+      {isPending && (
+        <span
+          className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-60"
+          aria-hidden
+        />
+      )}
+      {label}
+    </button>
+  );
 }
 
 export default function EmployeeCard({
@@ -72,29 +187,94 @@ export default function EmployeeCard({
   isSelf,
   isRolePending,
   isStatusPending,
+  hasOtherAdmin,
   onPromote,
   onDemote,
   onDeactivate,
   onReactivate,
+  onScheduleDeletion,
+  onDeleteNow,
+  onCancelScheduledDeletion,
+  onCancelInvite,
+  onResendInvite,
 }: EmployeeCardProps) {
   const displayLabel = employee.displayName ?? employee.email ?? "Unknown";
   const isDeactivated = employee.status === "deactivated";
   const isPending = employee.status === "pending";
   const isActive = employee.status === "active";
+  const isInGraceWindow = employee.deletionScheduledAt !== null;
 
-  // Determine which action buttons to show.
-  const canPromote = isAdmin && !isSelf && isActive && employee.role === "employee";
-  const canDemote = isAdmin && !isSelf && isActive && employee.role === "admin";
-  const canDeactivate = isAdmin && !isSelf && isActive;
+  // ----- Status badge derivation -----
+  // Deletion Scheduled takes precedence over Active (handoff spec).
+  // An employee in the grace window has status='active' but we show the
+  // "Deletion Scheduled" badge instead.
+  const statusBadgeVariant: BadgeVariant = (() => {
+    if (isInGraceWindow) return "deletion-scheduled";
+    if (isPending) return "pending";
+    if (isDeactivated) return "deactivated";
+    return "active";
+  })();
+
+  const statusBadgeLabel = (() => {
+    if (isInGraceWindow) return "Deletion Scheduled";
+    if (isPending) return "Pending";
+    if (isDeactivated) return "Deactivated";
+    return "Active";
+  })();
+
+  const deletionTooltip =
+    isInGraceWindow && employee.deletionScheduledAt
+      ? formatDeletionTimestamp(employee.deletionScheduledAt)
+      : undefined;
+
+  // ----- Action visibility -----
+  // For active non-grace-window employees:
+  const canPromote =
+    isAdmin && !isSelf && isActive && !isInGraceWindow && employee.role === "employee";
+  const canDemote =
+    isAdmin && !isSelf && isActive && !isInGraceWindow && employee.role === "admin";
+  const canDeactivate = isAdmin && !isSelf && isActive && !isInGraceWindow;
+
+  // Delete options are hidden for:
+  //   - platform admin targets (never deletable)
+  //   - the admin's own row when no other admin exists (last-admin quorum)
+  const deletionAllowed =
+    isAdmin &&
+    !employee.isPlatformAdmin &&
+    (!isSelf || hasOtherAdmin);
+
+  const canScheduleDeletion = deletionAllowed && isActive && !isInGraceWindow;
+  const canDeleteNow = deletionAllowed && isActive && !isInGraceWindow;
+
+  // Grace-window employees: only one available action.
+  const canCancelScheduledDeletion = isAdmin && isInGraceWindow;
+
+  // Pending employees: only invite management.
+  const canCancelInvite = isAdmin && isPending;
+  const canResendInvite = isAdmin && isPending;
+
+  // Deactivated employees: only reactivate.
   const canReactivate = isAdmin && isDeactivated;
-  // Pending rows: no role or deactivation controls (PRD UI requirements).
-  const showAnyAction = canPromote || canDemote || canDeactivate || canReactivate;
+
+  const showAnyAction =
+    canPromote ||
+    canDemote ||
+    canDeactivate ||
+    canScheduleDeletion ||
+    canDeleteNow ||
+    canCancelScheduledDeletion ||
+    canCancelInvite ||
+    canResendInvite ||
+    canReactivate;
+
+  // Opacity dim: deactivated or in grace window.
+  const isDimmed = isDeactivated || isInGraceWindow;
 
   return (
     <div
       className={[
         "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:bg-slate-800",
-        isDeactivated ? "opacity-60" : "",
+        isDimmed ? "opacity-60" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -105,7 +285,7 @@ export default function EmployeeCard({
           <span
             className={[
               "truncate text-sm font-semibold",
-              isDeactivated
+              isDimmed
                 ? "text-slate-400 dark:text-slate-500"
                 : "text-slate-900 dark:text-slate-100",
             ].join(" ")}
@@ -122,10 +302,9 @@ export default function EmployeeCard({
             variant={employee.role === "admin" ? "admin" : "employee"}
           />
           <Badge
-            label={
-              isPending ? "Pending" : isDeactivated ? "Deactivated" : "Active"
-            }
-            variant={isPending ? "pending" : isDeactivated ? "deactivated" : "active"}
+            label={statusBadgeLabel}
+            variant={statusBadgeVariant}
+            title={deletionTooltip}
           />
         </div>
         {employee.email && employee.displayName && (
@@ -138,12 +317,47 @@ export default function EmployeeCard({
             Invitation pending — awaiting acceptance
           </p>
         )}
+        {isInGraceWindow && deletionTooltip && (
+          <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+            {deletionTooltip}
+          </p>
+        )}
       </div>
 
       {/* Right: actions */}
       {showAnyAction && (
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {/* Role change buttons */}
+          {/* Grace-window actions (exclusive) */}
+          {canCancelScheduledDeletion && (
+            <DefaultButton
+              label="Cancel Scheduled Deletion"
+              ariaLabel={`Cancel scheduled deletion for ${displayLabel}`}
+              isPending={isStatusPending}
+              onClick={() => onCancelScheduledDeletion(employee)}
+              colorClass="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            />
+          )}
+
+          {/* Pending invite actions (exclusive) */}
+          {canCancelInvite && (
+            <DestructiveButton
+              label="Cancel Invite"
+              ariaLabel={`Cancel invitation for ${displayLabel}`}
+              isPending={isStatusPending}
+              onClick={() => onCancelInvite(employee)}
+            />
+          )}
+          {canResendInvite && (
+            <DefaultButton
+              label="Resend Invite"
+              ariaLabel={`Resend invitation to ${displayLabel}`}
+              isPending={isStatusPending}
+              onClick={() => onResendInvite(employee)}
+              colorClass="border-sky-200 text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-900/20"
+            />
+          )}
+
+          {/* Active employee — role change */}
           {canPromote && (
             <button
               type="button"
@@ -152,12 +366,12 @@ export default function EmployeeCard({
               aria-label={`Promote ${displayLabel} to admin`}
               className="flex items-center gap-1.5 rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-900/20"
             >
-              {isRolePending ? (
+              {isRolePending && (
                 <span
                   className="h-3 w-3 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700"
                   aria-hidden
                 />
-              ) : null}
+              )}
               Promote to Admin
             </button>
           )}
@@ -169,50 +383,51 @@ export default function EmployeeCard({
               aria-label={`Demote ${displayLabel} to employee`}
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700"
             >
-              {isRolePending ? (
+              {isRolePending && (
                 <span
                   className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
                   aria-hidden
                 />
-              ) : null}
+              )}
               Demote to Employee
             </button>
           )}
 
-          {/* Status change buttons */}
+          {/* Active employee — status change */}
           {canDeactivate && (
-            <button
-              type="button"
+            <DestructiveButton
+              label="Deactivate"
+              ariaLabel={`Deactivate ${displayLabel}`}
+              isPending={isRolePending || isStatusPending}
               onClick={() => onDeactivate(employee)}
-              disabled={isRolePending || isStatusPending}
-              aria-label={`Deactivate ${displayLabel}`}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-            >
-              {isStatusPending ? (
-                <span
-                  className="h-3 w-3 animate-spin rounded-full border-2 border-red-300 border-t-red-600"
-                  aria-hidden
-                />
-              ) : null}
-              Deactivate
-            </button>
+            />
           )}
           {canReactivate && (
-            <button
-              type="button"
+            <DefaultButton
+              label="Reactivate"
+              ariaLabel={`Reactivate ${displayLabel}`}
+              isPending={isStatusPending}
               onClick={() => onReactivate(employee)}
-              disabled={isRolePending || isStatusPending}
-              aria-label={`Reactivate ${displayLabel}`}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
-            >
-              {isStatusPending ? (
-                <span
-                  className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-700"
-                  aria-hidden
-                />
-              ) : null}
-              Reactivate
-            </button>
+              colorClass="border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+            />
+          )}
+
+          {/* Active employee — deletion actions */}
+          {canScheduleDeletion && (
+            <DestructiveButton
+              label="Schedule Deletion"
+              ariaLabel={`Schedule deletion for ${displayLabel}`}
+              isPending={isRolePending || isStatusPending}
+              onClick={() => onScheduleDeletion(employee)}
+            />
+          )}
+          {canDeleteNow && (
+            <DestructiveButton
+              label="Delete Now"
+              ariaLabel={`Permanently delete ${displayLabel}`}
+              isPending={isRolePending || isStatusPending}
+              onClick={() => onDeleteNow(employee)}
+            />
           )}
         </div>
       )}

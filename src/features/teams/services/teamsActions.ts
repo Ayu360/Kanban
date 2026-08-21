@@ -238,10 +238,15 @@ export async function addTeamMemberAction(
 // ---------------------------------------------------------------------------
 
 /**
- * Removes a profile from a team.
+ * Removes a live (non-tombstone) member from a team.
  *
  * Authorization: platform admin OR company admin.
  * Idempotent: removing a non-member is a no-op.
+ *
+ * IMPORTANT: profileId must be a non-null string. Do NOT call this action
+ * for tombstone rows (where profileId is null). Use removeTombstoneAction
+ * for tombstone removal — it uses the surrogate memberRowId to safely target
+ * a specific tombstone row without matching all tombstones in the team.
  *
  * Access is revoked immediately at the next RLS-evaluated query from the
  * removed member — no server-side cache invalidation is needed (ADR-0009).
@@ -250,6 +255,18 @@ export async function removeTeamMemberAction(
   teamId: string,
   profileId: string
 ): Promise<ActionResult<void>> {
+  // Null guard — callers (including TeamMembersList) must not route tombstones here.
+  // This is a defense-in-depth check; the service layer also guards against null.
+  if (!profileId) {
+    return {
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "profileId is required. Use removeTombstoneAction for tombstone rows.",
+      },
+    };
+  }
+
   try {
     const caller = await getCallerProfile();
 
@@ -265,6 +282,62 @@ export async function removeTeamMemberAction(
 
     const teamsService = getTeamsService();
     await teamsService.removeTeamMember(teamId, profileId, caller);
+    return { success: true, data: undefined };
+  } catch (error) {
+    const appError = normalizeError(error);
+    return {
+      success: false,
+      error: { code: appError.code, message: appError.message },
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// removeTombstoneAction
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes a tombstone row (profile_id = null) from a team by its surrogate
+ * UUID primary key (team_members.id).
+ *
+ * Authorization: platform admin OR company admin.
+ *
+ * This action exists because tombstone rows cannot be safely targeted by
+ * profileId — all tombstones in a team have profile_id = null, so any
+ * `.eq("profile_id", null)` filter would match ALL of them. The surrogate
+ * `memberRowId` uniquely identifies the specific tombstone row to remove.
+ */
+export async function removeTombstoneAction(
+  teamId: string,
+  memberRowId: string
+): Promise<ActionResult<void>> {
+  // Null guard — mirrors the pattern in removeTeamMemberAction. Defense-in-depth
+  // at the action boundary; the service layer also validates these fields.
+  if (!teamId || !memberRowId) {
+    return {
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Team ID and member row ID are required.",
+      },
+    };
+  }
+
+  try {
+    const caller = await getCallerProfile();
+
+    if (!caller) {
+      return {
+        success: false,
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "You must be signed in to manage team members.",
+        },
+      };
+    }
+
+    const teamsService = getTeamsService();
+    await teamsService.removeTombstone(teamId, memberRowId, caller);
     return { success: true, data: undefined };
   } catch (error) {
     const appError = normalizeError(error);

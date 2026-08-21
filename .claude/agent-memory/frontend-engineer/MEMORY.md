@@ -1,2 +1,3 @@
 - [Auth Migration Project Context](project_auth_migration.md) — Auth layer migrated to Supabase; board data still uses fakeApi pending a future PR
 - [Frontend Codebase Patterns](project_codebase_patterns.md) — Design tokens, state management, auth hooks, routing conventions, pre-existing lint errors
+- [Teams Tombstone Schema Change (PRD 05 FE-1)](project_tombstone_teams.md) — team_members surrogate UUID PK, nullable profileId, tombstone rendering; must ship with migration 20260819000001

@@ -46,10 +46,25 @@ export interface Team {
  * Base fields map to public.team_members.
  * Enriched fields (displayName, email, role) are populated when the
  * repository joins to public.profiles (listMembers query).
+ *
+ * Schema note (migration 20260819000001):
+ *   - `id` is the new surrogate UUID primary key on team_members. Use this
+ *     as the React key and for operations that must target a specific row
+ *     (e.g., removing a tombstone row where profileId is null).
+ *   - `profileId` is now nullable. A null value means the row is a tombstone:
+ *     the employee who held this membership slot has been hard-deleted.
+ *     Tombstone rows are rendered as "[Deleted User]" and can only be removed
+ *     via removeMemberById (not removeMember, which requires a non-null profileId).
  */
 export interface TeamMember {
+  /** Surrogate UUID PK on team_members (added in migration 20260819000001). */
+  id: string;
   teamId: string;
-  profileId: string;
+  /**
+   * Profile ID of the member. Null when the profile has been hard-deleted
+   * (tombstone row). Never pass null to removeMember — use removeMemberById instead.
+   */
+  profileId: string | null;
   createdAt: string;
   // Enriched from profiles join — may be null if profile data is unavailable
   displayName: string | null;
@@ -97,6 +112,17 @@ export interface AddTeamMemberInput {
 export interface RemoveTeamMemberInput {
   teamId: string;
   profileId: string;
+}
+
+/**
+ * Input for removing a tombstone row (profile_id = null) from a team.
+ * Tombstone rows cannot be removed via RemoveTeamMemberInput because the
+ * surrogate `memberRowId` (team_members.id) is required to target the
+ * specific row — a null profileId would match ALL tombstones in the team.
+ */
+export interface RemoveTombstoneInput {
+  teamId: string;
+  memberRowId: string;
 }
 
 // ---------------------------------------------------------------------------

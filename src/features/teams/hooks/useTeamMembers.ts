@@ -32,9 +32,12 @@ import { teamsQueryKeys } from "./useTeams";
 async function fetchTeamMembers(teamId: string): Promise<TeamMember[]> {
   const supabase = getSupabaseBrowserClient();
 
+  // `id` is the surrogate UUID PK added in migration 20260819000001.
+  // It is used as the React key and for tombstone removal (removeMemberById).
+  // `profile_id` is nullable after 20260819000001 — tombstone rows have NULL.
   const { data, error } = await supabase
     .from("team_members")
-    .select("team_id, profile_id, created_at, profiles(display_name, role)")
+    .select("id, team_id, profile_id, created_at, profiles(display_name, role)")
     .eq("team_id", teamId)
     .order("created_at", { ascending: true });
 
@@ -43,13 +46,15 @@ async function fetchTeamMembers(teamId: string): Promise<TeamMember[]> {
   }
 
   type MemberRow = {
+    id: string;
     team_id: string;
-    profile_id: string;
+    profile_id: string | null;
     created_at: string;
     profiles: { display_name: string | null; role: string | null } | null;
   };
 
   return (data ?? []).map((row: MemberRow) => ({
+    id: row.id,
     teamId: row.team_id,
     profileId: row.profile_id,
     createdAt: row.created_at,
