@@ -1,28 +1,24 @@
 "use client";
 
 import KanbanColumn from "./KanbanColumn";
-import type { Column, Topic } from "@/features/kanban/types";
+import type { Column, Task } from "@/features/tasks/types";
 
 interface KanbanBodyProps {
-  boardId: string;
-  userId: string;
   columns: Column[];
-  topicsByColumnId: Record<string, Topic[]>;
-  onEditTopic: (topic: Topic) => void;
-  onEditColumn: (column: Column) => void;
+  tasksByColumnId: Record<string, Task[]>;
+  onEditTask: (task: Task) => void;
   onAddCard: (columnId: string) => void;
   isMobile: boolean;
-  onMoveTopicRequest: (topic: Topic) => void;
+  onMoveTaskRequest: (task: Task) => void;
 }
 
 const KanbanBody: React.FC<KanbanBodyProps> = ({
   columns,
-  topicsByColumnId,
-  onEditTopic,
-  onEditColumn,
+  tasksByColumnId,
+  onEditTask,
   onAddCard,
   isMobile,
-  onMoveTopicRequest,
+  onMoveTaskRequest,
 }) => {
   return (
     <div className="mx-auto max-w-[1600px] px-4 pb-8 pt-4 sm:px-6 sm:pt-6 sm:pb-8">
@@ -31,16 +27,15 @@ const KanbanBody: React.FC<KanbanBodyProps> = ({
           <KanbanColumn
             key={column.id}
             column={column}
-            topics={topicsByColumnId[column.id] ?? []}
-            onEditTopic={onEditTopic}
-            onEditColumn={onEditColumn}
+            tasks={tasksByColumnId[column.id] ?? []}
+            onEditTask={onEditTask}
             onAddCard={onAddCard}
             isMobile={isMobile}
-            onMoveTopicRequest={onMoveTopicRequest}
+            onMoveTaskRequest={onMoveTaskRequest}
           />
         ))}
       </div>
-  </div>
+    </div>
   );
 };
 

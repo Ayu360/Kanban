@@ -2,26 +2,24 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import KanbanCard from "./KanbanCard";
-import type { Column, Topic } from "@/features/kanban/types";
+import type { Column, Task } from "@/features/tasks/types";
 
 interface KanbanColumnProps {
   column: Column;
-  topics: Topic[];
-  onEditTopic: (topic: Topic) => void;
-  onEditColumn: (column: Column) => void;
+  tasks: Task[];
+  onEditTask: (task: Task) => void;
   onAddCard: (columnId: string) => void;
   isMobile: boolean;
-  onMoveTopicRequest: (topic: Topic) => void;
+  onMoveTaskRequest: (task: Task) => void;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
   column,
-  topics,
-  onEditTopic,
-  onEditColumn,
+  tasks,
+  onEditTask,
   onAddCard,
   isMobile,
-  onMoveTopicRequest,
+  onMoveTaskRequest,
 }) => {
   const { isOver, setNodeRef } = useDroppable({
     id: column.id,
@@ -36,30 +34,24 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           : "border-slate-200 bg-slate-50/80 dark:border-slate-600 dark:bg-slate-800/50"
       }`}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5 dark:border-slate-600 sm:px-4 sm:py-3">
+      {/* Column header — title only; no edit button (Y1 removal) */}
+      <div className="flex items-center border-b border-slate-200 px-3 py-2.5 dark:border-slate-600 sm:px-4 sm:py-3">
         <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400 sm:text-sm">
           {column.title}
         </h2>
-        <button
-          type="button"
-          onClick={() => onEditColumn(column)}
-          className="shrink-0 rounded p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-          title="Edit column"
-          aria-label={`Edit column ${column.title}`}
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-          </svg>
-        </button>
+        <span className="ml-auto shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-400">
+          {tasks.length}
+        </span>
       </div>
+
       <div className="flex min-h-[280px] flex-col gap-2 p-3 sm:min-h-[320px] sm:gap-3 sm:p-4">
-        {topics.map((topic) => (
+        {tasks.map((task) => (
           <KanbanCard
-            key={topic.id}
-            topic={topic}
-            onEdit={() => onEditTopic(topic)}
+            key={task.id}
+            task={task}
+            onEdit={() => onEditTask(task)}
             isMobile={isMobile}
-            onMoveRequest={() => onMoveTopicRequest(topic)}
+            onMoveRequest={() => onMoveTaskRequest(task)}
           />
         ))}
         <button
@@ -67,8 +59,19 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           onClick={() => onAddCard(column.id)}
           className="mt-1 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 py-3 text-sm font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50/50 hover:text-sky-600 dark:border-slate-600 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:bg-sky-900/10 dark:hover:text-sky-400"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
           </svg>
           Add card
         </button>

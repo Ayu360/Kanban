@@ -28,11 +28,39 @@ type: project
 - `/login` has its own `src/app/login/layout.tsx`.
 - Middleware enforces all auth checks — no `useEffect` redirect guards allowed (ADR-0011).
 
-## Pre-existing Lint Errors (do not fix without scoping)
-- `EditModal.tsx` and `MoveCardModal.tsx`: `react-hooks/set-state-in-effect` errors.
-- `middleware.ts`: `searchParams` unused warning.
-- `KanbanHeader.tsx`: `<img>` instead of `next/image` warning (preserve existing pattern).
+## Pre-existing Lint Errors (status as of 2026-08-21)
+- `EditModal.tsx` and `MoveCardModal.tsx`: `react-hooks/set-state-in-effect` — FIXED in PRD 04 FE-T-3 using the outer/inner component + key pattern.
+- `middleware.ts`: `searchParams` unused warning — still present, do not touch.
+- `KanbanHeader.tsx`: `<img>` instead of `next/image` warning — still present (preserve existing pattern).
 - `teamsActions.ts`: unused `AppError` import — backend LOW note, do NOT touch from frontend.
+
+## setState-in-useEffect Fix Pattern (established PRD 04, 2026-08-21)
+When a form needs to reset its state when a prop (e.g. selected task/entity) changes:
+- Do NOT use `useEffect(() => { setState(prop.value); }, [prop])` — this triggers the `react-hooks/set-state-in-effect` lint error.
+- Instead: split into outer (wrapper, provides key) and inner (stateful form) components.
+- The outer renders `<InnerForm key={entity.id} entity={entity} ... />`.
+- React remounts InnerForm on key change, re-running useState initializers for the new entity.
+- Pattern used in: `EditModal` and `MoveCardModal` (both in `src/features/kanban/components/`).
+
+## Tasks Feature (PRD 04, implemented 2026-08-21)
+- Hooks: `useBoard`, `useCreateTask`, `useUpdateTask`, `useMoveTask`, `useDeleteTask`, `useBoardIdByTeam` in `src/features/tasks/hooks/`.
+- Barrel export at `src/features/tasks/hooks/index.ts` (does NOT include `useBoardIdByTeam` — route-specific).
+- Types: `Task`, `Column`, `Board`, `TaskPriority`, `CreateTaskInput`, `UpdateTaskInput`, `MoveTaskInput`, `TasksError` from `src/features/tasks/types/index.ts`.
+- Query key factory: `tasksQueryKeys` exported from `tasksQueryKeys.ts`, re-exported from hooks/index.ts.
+- Canonical board route: `/teams/[teamId]/board` at `src/app/teams/[teamId]/board/page.tsx`.
+- `/kanban` route: client-side redirect to first team's board via `useTeams()`.
+- `KanbanDashBoard` now accepts `boardId: string` prop (not userId). Does not call useCurrentUser.
+- Old kanban types (`Topic`, `BoardWithDetails`) are gone; use `Task`/`Column`/`Board` from tasks types.
+- `useEmployeeDirectory()` used in EditModal for assignee picker. Filter `e.displayName !== null` before rendering picker options.
+- `ConfirmDialog` (from teams feature) reused for task delete confirmation.
+
+## Routing (updated 2026-08-21)
+- Root `/` → Server Component redirect to `/kanban`.
+- `/kanban` → client-side redirect to `/teams/[teamId]/board` (first team) or "no team" placeholder.
+- `/teams/[teamId]/board` — canonical Kanban board page.
+- Auth pages under `src/app/(auth)/` route group (no URL impact).
+- `/login` has its own `src/app/login/layout.tsx`.
+- Middleware enforces all auth checks — no `useEffect` redirect guards allowed (ADR-0011).
 
 ## Modal Accessibility Pattern (established 2026-08-10)
 - `useFocusTrap(isOpen: boolean)` hook at `src/features/teams/hooks/useFocusTrap.ts`.
