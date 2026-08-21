@@ -16,38 +16,32 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useBoard, useMoveTopic, useUpdateTopic, useUpdateColumn } from "@/api/board";
-import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import type { Topic, Column } from "@/features/kanban/types";
+import { useBoard, useCreateTask, useMoveTask } from "@/features/tasks/hooks";
+import type { Task } from "@/features/tasks/types";
 
-function filterTopicsBySearch(topics: Topic[], searchQuery: string): Topic[] {
-  if (!searchQuery.trim()) return topics;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function filterTasksBySearch(tasks: Task[], searchQuery: string): Task[] {
+  if (!searchQuery.trim()) return tasks;
   const q = searchQuery.toLowerCase().trim();
-  return topics.filter(
+  return tasks.filter(
     (t) =>
       t.title.toLowerCase().includes(q) ||
       (t.description && t.description.toLowerCase().includes(q))
   );
 }
 
-function groupTopicsByColumnId(topics: Topic[]): Record<string, Topic[]> {
-  const map: Record<string, Topic[]> = {};
-  for (const t of topics) {
+function groupTasksByColumnId(tasks: Task[]): Record<string, Task[]> {
+  const map: Record<string, Task[]> = {};
+  for (const t of tasks) {
     if (!map[t.columnId]) map[t.columnId] = [];
     map[t.columnId].push(t);
   }
-  for (const arr of Object.values(map)) {
-    arr.sort((a, b) => a.order - b.order);
-  }
+  // Tasks within each column are already ordered by position ASC from the server
   return map;
 }
-
-type EditTarget =
-  | { type: "topic"; topic: Topic }
-  | { type: "column"; column: Column }
-  | null;
-
-const LOCAL_TOPIC_PREFIX = "local_";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -58,7 +52,6 @@ function useIsMobile() {
         setIsMobile(window.innerWidth < 640);
       }
     };
-
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -67,17 +60,29 @@ function useIsMobile() {
   return isMobile;
 }
 
-const KanbanDashBoard = () => {
-  const { user: currentUser } = useCurrentUser();
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+interface KanbanDashBoardProps {
+  /** The resolved boardId for the current team's board. */
+  boardId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+const KanbanDashBoard = ({ boardId }: KanbanDashBoardProps) => {
   const searchQuery = useSelector((state: RootState) => state.ui.searchQuery);
-  const { data: board, isLoading, isError } = useBoard(currentUser?.id);
-  const moveTopic = useMoveTopic();
-  const updateTopic = useUpdateTopic();
-  const updateColumn = useUpdateColumn();
-  const [editTarget, setEditTarget] = useState<EditTarget>(null);
-  const [localTopics, setLocalTopics] = useState<Topic[]>([]);
+
+  const { board, isLoading, error } = useBoard(boardId);
+  const moveTask = useMoveTask();
+  const createTask = useCreateTask();
+
+  const [editTask, setEditTask] = useState<Task | null>(null);
   const [addCardColumnId, setAddCardColumnId] = useState<string | null>(null);
-  const [moveTargetTopic, setMoveTargetTopic] = useState<Topic | null>(null);
+  const [moveTargetTask, setMoveTargetTask] = useState<Task | null>(null);
   const isMobile = useIsMobile();
 
   const sensors = useSensors(
@@ -85,113 +90,94 @@ const KanbanDashBoard = () => {
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } })
   );
 
-  const allTopics = useMemo(
-    () => [...(board?.topics ?? []), ...localTopics],
-    [board?.topics, localTopics]
+  // Flatten all tasks from all columns for search / drag lookup
+  const allTasks = useMemo(
+    () => board?.columns.flatMap((c) => c.tasks) ?? [],
+    [board]
   );
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       if (isMobile) return;
       const { active, over } = event;
-      if (!over || !board || !currentUser) return;
-      const topicId = String(active.id);
+      if (!over || !board) return;
+
+      const taskId = String(active.id);
       const columnIds = new Set(board.columns.map((c) => c.id));
-      let newColumnId: string;
+      let toColumnId: string;
+
       if (columnIds.has(String(over.id))) {
-        newColumnId = String(over.id);
+        toColumnId = String(over.id);
       } else {
-        const topicOver = allTopics.find((t) => t.id === String(over.id));
-        newColumnId = topicOver ? topicOver.columnId : "";
+        const taskOver = allTasks.find((t) => t.id === String(over.id));
+        toColumnId = taskOver ? taskOver.columnId : "";
       }
-      if (!newColumnId) return;
-      const topic = allTopics.find((t) => t.id === topicId);
-      if (!topic || topic.columnId === newColumnId) return;
-      if (topicId.startsWith(LOCAL_TOPIC_PREFIX)) {
-        setLocalTopics((prev) =>
-          prev.map((t) =>
-            t.id === topicId ? { ...t, columnId: newColumnId } : t
-          )
-        );
-      } else {
-        moveTopic.mutateAsync({
-          topicId,
-          newColumnId,
-          boardId: board.id,
-          userId: currentUser.id,
-        });
-      }
+
+      if (!toColumnId) return;
+
+      const task = allTasks.find((t) => t.id === taskId);
+      if (!task || task.columnId === toColumnId) return;
+
+      // useMoveTask handles the optimistic patch and rollback.
+      moveTask.mutate({ taskId, toColumnId, boardId });
     },
-    [board, currentUser, moveTopic, allTopics, isMobile]
+    [board, moveTask, allTasks, isMobile, boardId]
   );
 
-  const topicsByColumnId = useMemo(() => {
-    const filtered = filterTopicsBySearch(allTopics, searchQuery);
-    return groupTopicsByColumnId(filtered);
-  }, [allTopics, searchQuery]);
+  const tasksByColumnId = useMemo(() => {
+    const filtered = filterTasksBySearch(allTasks, searchQuery);
+    return groupTasksByColumnId(filtered);
+  }, [allTasks, searchQuery]);
 
-  const handleAddCard = useCallback((columnId: string, title: string, description: string) => {
-    if (!board) return;
-    const maxOrder = Math.max(
-      0,
-      ...allTopics.filter((t) => t.columnId === columnId).map((t) => t.order)
-    );
-    const newTopic: Topic = {
-      id: `${LOCAL_TOPIC_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      columnId,
-      boardId: board.id,
-      title,
-      description,
-      order: maxOrder + 1,
-    };
-    setLocalTopics((prev) => [...prev, newTopic]);
-    setAddCardColumnId(null);
-  }, [board, allTopics]);
+  const [addCardError, setAddCardError] = useState<string | null>(null);
 
-  const handleSaveTopic = useCallback(
-    (params: { id: string; title: string; description: string; boardId: string; userId: string }) => {
-      if (params.id.startsWith(LOCAL_TOPIC_PREFIX)) {
-        setLocalTopics((prev) =>
-          prev.map((t) =>
-            t.id === params.id
-              ? { ...t, title: params.title, description: params.description }
-              : t
-          )
-        );
-      } else {
-        updateTopic.mutateAsync(params);
-      }
+  const handleAddCard = useCallback(
+    (columnId: string, title: string, description: string) => {
+      if (!board) return;
+      setAddCardError(null);
+      createTask.mutate(
+        {
+          title,
+          description: description || undefined,
+          columnId,
+          boardId: board.id,
+          priority: "medium",
+        },
+        {
+          onSuccess: () => {
+            setAddCardColumnId(null);
+          },
+          onError: (err) => {
+            // Surface the actual failure so we don't silently close on error.
+            console.error("[useCreateTask] failed:", err);
+            setAddCardError(
+              err instanceof Error && err.message
+                ? err.message
+                : "Failed to create task. Please try again."
+            );
+          },
+        }
+      );
     },
-    [updateTopic]
+    [board, createTask]
   );
 
-  const handleMoveTopicToColumn = useCallback(
-    (topic: Topic, newColumnId: string) => {
-      if (!board || !currentUser) return;
-      if (!newColumnId || topic.columnId === newColumnId) return;
-
-      const topicId = topic.id;
-      if (topicId.startsWith(LOCAL_TOPIC_PREFIX)) {
-        setLocalTopics((prev) =>
-          prev.map((t) =>
-            t.id === topicId ? { ...t, columnId: newColumnId } : t
-          )
-        );
-      } else {
-        moveTopic.mutateAsync({
-          topicId,
-          newColumnId,
-          boardId: board.id,
-          userId: currentUser.id,
-        });
-      }
+  const handleMoveTaskToColumn = useCallback(
+    (task: Task, toColumnId: string) => {
+      if (!board) return;
+      if (!toColumnId || task.columnId === toColumnId) return;
+      moveTask.mutate({ taskId: task.id, toColumnId, boardId: board.id });
     },
-    [board, currentUser, moveTopic]
+    [board, moveTask]
   );
 
   const addCardColumn = board?.columns.find((c) => c.id === addCardColumnId);
 
-  if (isLoading || !board) {
+  // -------------------------------------------------------------------------
+  // Loading / error states
+  // -------------------------------------------------------------------------
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
         <KanbanHeader />
@@ -203,61 +189,87 @@ const KanbanDashBoard = () => {
     );
   }
 
-  if (isError) {
+  if (error) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
         <KanbanHeader />
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3">
-          <p className="text-sm font-medium text-red-600 dark:text-red-400">Failed to load board.</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Try refreshing the page.</p>
+          <p className="text-sm font-medium text-red-600 dark:text-red-400">
+            Failed to load board.
+          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Try refreshing the page.
+          </p>
         </div>
       </div>
     );
   }
+
+  if (!board) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+        <KanbanHeader />
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            No board found for this team.
+          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            The board may still be setting up, or you may not have access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
 
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
         <KanbanHeader />
         <KanbanBody
-          boardId={board.id}
-          userId={currentUser?.id ?? ""}
           columns={board.columns}
-          topicsByColumnId={topicsByColumnId}
-          onEditTopic={(topic) => setEditTarget({ type: "topic", topic })}
-          onEditColumn={(column) => setEditTarget({ type: "column", column })}
+          tasksByColumnId={tasksByColumnId}
+          onEditTask={(task) => setEditTask(task)}
           onAddCard={(columnId: string) => setAddCardColumnId(columnId)}
           isMobile={isMobile}
-          onMoveTopicRequest={(topic) => setMoveTargetTopic(topic)}
+          onMoveTaskRequest={(task) => setMoveTargetTask(task)}
         />
       </div>
+
       <EditModal
-        target={editTarget}
+        task={editTask}
         boardId={board.id}
-        userId={currentUser?.id ?? ""}
-        onClose={() => setEditTarget(null)}
-        onSaveTopic={handleSaveTopic}
-        onSaveColumn={(params) => updateColumn.mutateAsync(params)}
+        onClose={() => setEditTask(null)}
       />
+
       {addCardColumn && (
         <AddCardModal
           columnTitle={addCardColumn.title}
-          onClose={() => setAddCardColumnId(null)}
+          onClose={() => {
+            setAddCardColumnId(null);
+            setAddCardError(null);
+          }}
           onSubmit={(title, description) =>
             handleAddCard(addCardColumn.id, title, description)
           }
+          errorMessage={addCardError}
+          isPending={createTask.isPending}
         />
       )}
+
       <MoveCardModal
-        topic={moveTargetTopic}
+        task={moveTargetTask}
         columns={board.columns}
-        isOpen={!!moveTargetTopic && isMobile}
-        onClose={() => setMoveTargetTopic(null)}
+        isOpen={!!moveTargetTask && isMobile}
+        onClose={() => setMoveTargetTask(null)}
         onConfirm={(columnId) => {
-          if (moveTargetTopic) {
-            handleMoveTopicToColumn(moveTargetTopic, columnId);
+          if (moveTargetTask) {
+            handleMoveTaskToColumn(moveTargetTask, columnId);
           }
-          setMoveTargetTopic(null);
+          setMoveTargetTask(null);
         }}
       />
     </DndContext>

@@ -1,46 +1,44 @@
 "use client";
 
-import type { Column, Topic } from "@/features/kanban/types";
+import type { Column, Task } from "@/features/tasks/types";
 import { useEffect, useState } from "react";
 
 interface MoveCardModalProps {
-  topic: Topic | null;
+  task: Task | null;
   columns: Column[];
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (columnId: string) => void;
 }
 
-export default function MoveCardModal({
-  topic,
-  columns,
-  isOpen,
-  onClose,
-  onConfirm,
-}: MoveCardModalProps) {
-  const [selectedColumnId, setSelectedColumnId] = useState<string>("");
+/**
+ * Inner form — mounted with key={task.id + isOpen} so that useState
+ * initializers re-run whenever a different task is targeted, avoiding
+ * setState-in-useEffect (react-hooks/set-state-in-effect).
+ */
+interface MoveFormProps {
+  task: Task;
+  columns: Column[];
+  onClose: () => void;
+  onConfirm: (columnId: string) => void;
+}
+
+function MoveForm({ task, columns, onClose, onConfirm }: MoveFormProps) {
+  // Initial selected column is the task's current column.
+  const [selectedColumnId, setSelectedColumnId] = useState(task.columnId);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
-    if (topic) {
-      setSelectedColumnId(topic.columnId);
-    }
-  }, [topic]);
-
-  useEffect(() => {
-    if (!isOpen || !topic) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, [isOpen, topic]);
-
-  if (!isOpen || !topic) return null;
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedColumnId || selectedColumnId === topic.columnId) {
+    if (!selectedColumnId || selectedColumnId === task.columnId) {
       onClose();
       return;
     }
@@ -71,15 +69,13 @@ export default function MoveCardModal({
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           Choose a column to move{" "}
           <span className="font-medium text-slate-700 dark:text-slate-200">
-            {topic.title}
+            {task.title}
           </span>{" "}
           to.
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label
-              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300"
-            >
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Destination column
             </label>
             <div className="relative">
@@ -94,6 +90,7 @@ export default function MoveCardModal({
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden
                 >
                   <path
                     strokeLinecap="round"
@@ -147,3 +144,24 @@ export default function MoveCardModal({
   );
 }
 
+export default function MoveCardModal({
+  task,
+  columns,
+  isOpen,
+  onClose,
+  onConfirm,
+}: MoveCardModalProps) {
+  if (!isOpen || !task) return null;
+
+  // key ensures MoveForm remounts when the targeted task changes,
+  // so useState initializers re-run for the new task.
+  return (
+    <MoveForm
+      key={task.id}
+      task={task}
+      columns={columns}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+}

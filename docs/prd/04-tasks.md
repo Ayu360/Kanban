@@ -111,6 +111,7 @@ This module depends on Authentication (01-authentication.md), Teams (02-teams.md
 - The assignee is selectable from a list of active employees in the company (sourced from the employees data layer).
 - The assignee's display name is shown on the task card when set.
 - Deactivated employees can be shown as the assignee on existing tasks (with a "Deactivated" indicator) but cannot be selected as an assignee for new or updated tasks.
+- **Deleted employees** (hard-deleted per PRD 05) leave the task with `assignee_id = NULL` via the FK `ON DELETE SET NULL`. In MVP the task card simply shows no assignee (same as never-assigned); the task is not cascade-deleted, hidden, or auto-reassigned. Admin can re-assign it manually via the `EditModal`.
 - Assignee is set in the `EditModal`.
 
 ## FR-08: Task Due Date
@@ -146,7 +147,7 @@ This module depends on Authentication (01-authentication.md), Teams (02-teams.md
 - Per ADR-0015, task CRUD operations are client-side Supabase writes (anon key + RLS). No Server Action is required for task create, update, move, or delete. Server Actions are not used for task operations in MVP.
 - Columns are not editable in MVP. The `columns` table is written to only at team creation time (seeded with three fixed columns). No column rename, add, or delete flow exists in this module.
 - The optimistic update pattern for task move is the reference implementation as documented in PROJECT_CONTEXT section 12 and ADR-0013. New optimistic mutations in other features should follow this shape.
-- `created_by` is set to the current user's `profile_id` at insert time. It is immutable after creation.
+- `created_by` is set to the current user's `profile_id` at insert time. It is immutable after creation by application code. If the creator is hard-deleted per PRD 05, `created_by` becomes NULL via the FK `ON DELETE SET NULL`; the task persists as a tombstone-safe row. Any UI surfacing creator attribution (currently rare in MVP) renders `[Deleted User]` for NULL creators, matching the Teams tombstone pattern.
 
 ---
 
@@ -170,6 +171,7 @@ This module depends on Authentication (01-authentication.md), Teams (02-teams.md
 - The Kanban board UI in `src/features/kanban/` is the starting point and must be preserved in appearance and interaction. No visual regression from the existing demo is acceptable.
 - Drag-and-drop on desktop (via `@dnd-kit`) and the move modal on mobile are both preserved.
 - Task cards display: title, description excerpt (if any), priority indicator, assignee name/avatar (if set), due date (if set, with overdue styling for past dates).
+- **Tombstone-safe assignee/creator:** when an employee is hard-deleted, tasks they created or were assigned to persist (FK ON DELETE SET NULL). A NULL `assignee_id` renders as no assignee (same UX as never-assigned — MVP does not surface historical assignment). If any UI surfaces creator attribution (e.g. future EditModal metadata or hover states), a NULL `created_by` renders `[Deleted User]` with muted styling, matching the Teams tombstone pattern. Creator attribution is not prominently displayed on task cards in MVP.
 - The `AddCardModal` is unchanged in appearance. Its behavior changes from `setLocalTopics` to a real `useCreateTask` mutation.
 - The `EditModal` is extended to include controls for priority (select), assignee (employee picker), and due date (date picker) in addition to the existing title and description fields. A delete button is also added.
 - Column headers show the column title and task count.
@@ -198,7 +200,8 @@ This module depends on Authentication (01-authentication.md), Teams (02-teams.md
 
 Described in prose only. SQL lives in `supabase/migrations/`.
 
-- A `tasks` table holds task records. Each row carries: `id` (UUID, primary key), `column_id` (UUID, non-nullable, foreign key to `columns`), `board_id` (UUID, non-nullable, foreign key to `boards`), `company_id` (UUID, non-nullable, foreign key to `companies` — per ADR-0006), `title` (text, non-nullable), `description` (text, nullable), `priority` (text, constrained to `'low'`, `'medium'`, `'high'`, defaults to `'medium'`), `assignee_id` (UUID, nullable, foreign key to `profiles`), `due_date` (date, nullable), `position` (integer, non-nullable), `created_by` (UUID, non-nullable, foreign key to `profiles`), `created_at` (timestamp, non-nullable, set by default), `updated_at` (timestamp, non-nullable, updated by a database trigger on every row change).
+- A `tasks` table holds task records. Each row carries: `id` (UUID, primary key), `column_id` (UUID, non-nullable, foreign key to `columns`), `board_id` (UUID, non-nullable, foreign key to `boards`), `company_id` (UUID, non-nullable, foreign key to `companies` — per ADR-0006), `title` (text, non-nullable), `description` (text, nullable), `priority` (text, constrained to `'low'`, `'medium'`, `'high'`, defaults to `'medium'`), `assignee_id` (UUID, nullable, foreign key to `profiles` with `ON DELETE SET NULL`), `due_date` (date, nullable), `position` (integer, non-nullable), `created_by` (UUID, **nullable**, foreign key to `profiles` with `ON DELETE SET NULL`), `created_at` (timestamp, non-nullable, set by default), `updated_at` (timestamp, non-nullable, updated by a database trigger on every row change).
+- **Tombstone-first FK behavior (per PRD 05):** Both `assignee_id` and `created_by` reference `profiles.id` with `ON DELETE SET NULL`. When an employee is hard-deleted via the PRD 05 lifecycle deletion flow, all their referenced tasks persist with the relevant column set to NULL. Tasks are never cascade-deleted. This mirrors the tombstone contract established for `team_members.profile_id` and `boards.created_by`. Application code treats `created_by` as write-once at insert; the NULL transition is only ever triggered by the deletion cascade, not by an UPDATE.
 - The `columns` table (defined in the Teams module) carries the board's ordered column list. No columns table changes are needed here beyond confirming that `columns` rows exist before tasks can be inserted.
 - The `boards` table (defined in the Teams module) is the parent of `columns`. No boards table changes are needed here.
 - RLS on `tasks`: three-tier policy per ADR-0009. The policy joins `tasks → columns → boards` to reach `boards.team_id`, then checks: (1) `is_platform_admin = true`, or (2) `tasks.company_id = jwt.company_id AND jwt.role = 'admin'`, or (3) `EXISTS (SELECT 1 FROM team_members WHERE profile_id = jwt.sub AND team_id = boards.team_id)`. This policy applies to SELECT, INSERT, UPDATE, and DELETE.
@@ -242,6 +245,7 @@ Described in prose only. SQL lives in `supabase/migrations/`.
 - Authentication module (01-authentication.md) must be complete. `useCurrentUser()` and the Supabase session must be available.
 - Teams module (02-teams.md) must be complete. `boards` and `columns` rows must exist before tasks can be inserted.
 - Employees module (03-employees.md) must be complete for the assignee picker to query active employees.
+- Employee Lifecycle & Deletion module (05-employee-lifecycle-deletion.md) must be complete. The tombstone-first FK pattern (`ON DELETE SET NULL` on `profiles.id` references) established there is the contract this module follows for `tasks.assignee_id` and `tasks.created_by`.
 - Database migration creating the `tasks` table with all columns, constraints, RLS policies, indexes, and the `updated_at` trigger must be deployed.
 - `@dnd-kit/core` is already installed; no new DnD dependency is needed.
 

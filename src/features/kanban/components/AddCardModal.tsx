@@ -6,12 +6,16 @@ interface AddCardModalProps {
   columnTitle: string;
   onClose: () => void;
   onSubmit: (title: string, description: string) => void;
+  errorMessage?: string | null;
+  isPending?: boolean;
 }
 
 export default function AddCardModal({
   columnTitle,
   onClose,
   onSubmit,
+  errorMessage,
+  isPending,
 }: AddCardModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -28,8 +32,9 @@ export default function AddCardModal({
     e.preventDefault();
     const t = title.trim();
     if (!t) return;
+    // Do NOT close on submit — parent closes on success only, so the user
+    // sees an error banner if the mutation fails.
     onSubmit(t, description.trim());
-    onClose();
   };
 
   return (
@@ -79,19 +84,29 @@ export default function AddCardModal({
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-sky-400"
             />
           </div>
+          {errorMessage && (
+            <p
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+            >
+              {errorMessage}
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+              disabled={isPending}
+              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+              disabled={isPending}
+              className="rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:ring-offset-slate-800"
             >
-              Add card
+              {isPending ? "Adding..." : "Add card"}
             </button>
           </div>
         </form>

@@ -113,6 +113,7 @@ factually wrong — the runtime 42P17 error is the proof.
 - `public.check_team_member_company_match()` — BEFORE INSERT trigger on team_members, SECURITY DEFINER. Cross-company membership guard with error distinction.
 - `public.check_board_company_id_match()` — BEFORE INSERT OR UPDATE trigger on boards, SECURITY DEFINER. Asserts boards.company_id = teams.company_id.
 - `public.check_column_company_id_match()` — BEFORE INSERT OR UPDATE trigger on columns, SECURITY DEFINER. Asserts columns.company_id = boards.company_id.
+- `public.check_task_company_id_match()` — BEFORE INSERT OR UPDATE trigger on tasks, SECURITY DEFINER. Asserts tasks.company_id = columns.company_id AND tasks.board_id = columns.board_id. UPDATE skip optimization when column_id/company_id/board_id are all unchanged.
 - `public.is_team_member(_team_id uuid)` — SECURITY DEFINER STABLE helper. Returns true if auth.uid() has a team_members row for _team_id. RLS-bypassing read. GRANT EXECUTE TO authenticated only. Added in 20260816000001 to fix RLS recursion.
 
 ## Hook activation
