@@ -29,6 +29,13 @@
  * Composition root:
  *   Actions import from container.ts to get EmployeesService.
  *   They do not instantiate repositories or clients directly.
+ *
+ * Audit log:
+ *   PRD 05 requires all lifecycle events to be written to employee_lifecycle_log.
+ *   Existing actions (invite, changeRole, deactivate, reactivate, activate) have
+ *   been extended with writeLifecycleLog calls after the primary operation succeeds.
+ *   Log failure does NOT roll back the primary operation — it is console.error'd
+ *   server-side for ops visibility (compliance gap, not user-facing error).
  */
 
 import type {
@@ -43,6 +50,10 @@ import type {
 } from "../types";
 import { normalizeError } from "./employeesService";
 import { getEmployeesService, getAuthService } from "@/lib/container";
+import {
+  writeLifecycleLog,
+  LogWriteError,
+} from "./employeesLifecycleLog";
 
 // ---------------------------------------------------------------------------
 // Private helper: get the authenticated caller's profile
@@ -209,6 +220,29 @@ export async function inviteEmployeeAction(input: {
 
     const employeesService = getEmployeesService();
     const result = await employeesService.inviteEmployee(input.email, caller);
+
+    // PRD 05 FR-12: write 'invite_sent' audit log entry after success.
+    // target_profile_id is available from the result; email and companyId from
+    // the caller (the invited employee's company matches the caller's company).
+    // Log failure is surfaced server-side only — does not roll back the invite.
+    try {
+      await writeLifecycleLog({
+        actorProfileId: caller.id,
+        targetProfileId: result.profileId,
+        targetEmail: input.email.trim().toLowerCase(),
+        targetCompanyId: caller.companyId,
+        action: "invite_sent",
+      });
+    } catch (logError) {
+      if (logError instanceof LogWriteError) {
+        console.error(
+          "[inviteEmployeeAction] Audit log write failed after successful invite.",
+          { profileId: result.profileId, email: input.email },
+          logError
+        );
+      }
+    }
+
     return { success: true, data: result };
   } catch (error) {
     const appError = normalizeError(error);
@@ -250,11 +284,49 @@ export async function changeEmployeeRoleAction(input: {
     }
 
     const employeesService = getEmployeesService();
+
+    // Fetch the target employee BEFORE the role change to capture email and
+    // companyId for the audit log. These fields must be read while the profile
+    // row still exists and is accessible.
+    const target = await employeesService.getEmployee(
+      input.targetProfileId,
+      caller
+    );
+
     const result = await employeesService.changeEmployeeRole(
       input.targetProfileId,
       input.newRole,
       caller
     );
+
+    // PRD 05 FR-12: write 'role_changed' audit log entry after success.
+    // Skip on noop — the role was already at the target value; writing a log
+    // row would record admin intent as a state change, which is misleading.
+    // Matches the deactivate/reactivate pattern exactly.
+    if (target && !result.noop) {
+      try {
+        await writeLifecycleLog({
+          actorProfileId: caller.id,
+          targetProfileId: input.targetProfileId,
+          targetEmail: target.email ?? "",
+          targetCompanyId: target.companyId,
+          action: "role_changed",
+          metadata: {
+            old_role: result.oldRole,
+            new_role: result.newRole,
+          },
+        });
+      } catch (logError) {
+        if (logError instanceof LogWriteError) {
+          console.error(
+            "[changeEmployeeRoleAction] Audit log write failed after successful role change.",
+            { targetProfileId: input.targetProfileId, oldRole: result.oldRole, newRole: result.newRole },
+            logError
+          );
+        }
+      }
+    }
+
     return { success: true, data: result };
   } catch (error) {
     const appError = normalizeError(error);
@@ -298,10 +370,40 @@ export async function deactivateEmployeeAction(input: {
     }
 
     const employeesService = getEmployeesService();
+
+    // Fetch the target BEFORE deactivation to capture email and companyId for
+    // the audit log (must be read while the profile row still exists).
+    const target = await employeesService.getEmployee(
+      input.targetProfileId,
+      caller
+    );
+
     const result = await employeesService.deactivateEmployee(
       input.targetProfileId,
       caller
     );
+
+    // PRD 05 FR-12: write 'deactivated' audit log entry after success.
+    if (target && !result.noop) {
+      try {
+        await writeLifecycleLog({
+          actorProfileId: caller.id,
+          targetProfileId: input.targetProfileId,
+          targetEmail: target.email ?? "",
+          targetCompanyId: target.companyId,
+          action: "deactivated",
+        });
+      } catch (logError) {
+        if (logError instanceof LogWriteError) {
+          console.error(
+            "[deactivateEmployeeAction] Audit log write failed after successful deactivation.",
+            { targetProfileId: input.targetProfileId },
+            logError
+          );
+        }
+      }
+    }
+
     return { success: true, data: result };
   } catch (error) {
     const appError = normalizeError(error);
@@ -344,10 +446,40 @@ export async function reactivateEmployeeAction(input: {
     }
 
     const employeesService = getEmployeesService();
+
+    // Fetch the target BEFORE reactivation to capture email and companyId for
+    // the audit log (must be read while the profile row still exists).
+    const target = await employeesService.getEmployee(
+      input.targetProfileId,
+      caller
+    );
+
     const result = await employeesService.reactivateEmployee(
       input.targetProfileId,
       caller
     );
+
+    // PRD 05 FR-12: write 'reactivated' audit log entry after success.
+    if (target && !result.noop) {
+      try {
+        await writeLifecycleLog({
+          actorProfileId: caller.id,
+          targetProfileId: input.targetProfileId,
+          targetEmail: target.email ?? "",
+          targetCompanyId: target.companyId,
+          action: "reactivated",
+        });
+      } catch (logError) {
+        if (logError instanceof LogWriteError) {
+          console.error(
+            "[reactivateEmployeeAction] Audit log write failed after successful reactivation.",
+            { targetProfileId: input.targetProfileId },
+            logError
+          );
+        }
+      }
+    }
+
     return { success: true, data: result };
   } catch (error) {
     const appError = normalizeError(error);
@@ -392,6 +524,31 @@ export async function activateInvitedEmployeeAction(): Promise<
 
     const employeesService = getEmployeesService();
     const result = await employeesService.activateInvitedEmployee();
+
+    // PRD 05 FR-12: write 'invite_accepted' audit log entry after success.
+    // The caller IS the target — self-activation. actor_profile_id = caller.id
+    // (the invitee) AND target_profile_id = caller.id. This is intentional:
+    // in the accept-invite path there is no separate admin actor.
+    if (!result.noop) {
+      try {
+        await writeLifecycleLog({
+          actorProfileId: caller.id,
+          targetProfileId: caller.id,
+          targetEmail: caller.email ?? "",
+          targetCompanyId: caller.companyId,
+          action: "invite_accepted",
+        });
+      } catch (logError) {
+        if (logError instanceof LogWriteError) {
+          console.error(
+            "[activateInvitedEmployeeAction] Audit log write failed after successful invite acceptance.",
+            { profileId: caller.id },
+            logError
+          );
+        }
+      }
+    }
+
     return { success: true, data: result };
   } catch (error) {
     const appError = normalizeError(error);
