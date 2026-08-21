@@ -69,6 +69,7 @@ type AdminEmployeeRow = {
   role: string;
   status: string;
   deactivated_at: string | null;
+  deletion_scheduled_at: string | null;
   is_platform_admin: boolean;
   created_at: string;
 };
@@ -86,6 +87,7 @@ function rowToAdminEmployee(row: AdminEmployeeRow): AdminEmployee {
     role: row.role,
     status: row.status as AdminEmployee["status"],
     deactivatedAt: row.deactivated_at,
+    deletionScheduledAt: row.deletion_scheduled_at,
     isPlatformAdmin: row.is_platform_admin,
     createdAt: row.created_at,
   };
@@ -277,7 +279,7 @@ export class SupabaseEmployeesRepository implements EmployeesRepository {
     const { data, error } = await serviceClient
       .from("admin_employee_list")
       .select(
-        "id, company_id, display_name, email, role, status, deactivated_at, is_platform_admin, created_at"
+        "id, company_id, display_name, email, role, status, deactivated_at, deletion_scheduled_at, is_platform_admin, created_at"
       )
       .eq("company_id", callerCompanyId)
       .order("display_name", { ascending: true, nullsFirst: false });
@@ -300,7 +302,7 @@ export class SupabaseEmployeesRepository implements EmployeesRepository {
     const { data, error } = await serviceClient
       .from("admin_employee_list")
       .select(
-        "id, company_id, display_name, email, role, status, deactivated_at, is_platform_admin, created_at"
+        "id, company_id, display_name, email, role, status, deactivated_at, deletion_scheduled_at, is_platform_admin, created_at"
       )
       .eq("id", profileId)
       .single();
@@ -358,7 +360,7 @@ export class SupabaseEmployeesRepository implements EmployeesRepository {
     const { data, error } = await serviceClient
       .from("admin_employee_list")
       .select(
-        "id, company_id, display_name, email, role, status, deactivated_at, is_platform_admin, created_at"
+        "id, company_id, display_name, email, role, status, deactivated_at, deletion_scheduled_at, is_platform_admin, created_at"
       )
       .eq("email", email)
       .eq("company_id", companyId)

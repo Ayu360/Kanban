@@ -84,10 +84,16 @@ function rowToTeam(row: {
 
 /**
  * Converts a raw team_members + profiles join row into a domain TeamMember DTO.
+ *
+ * Schema note (migration 20260819000001):
+ *   - `id` is now included from the select — it is the surrogate UUID PK.
+ *   - `profile_id` is now nullable; a null value is a tombstone row.
+ *     The profiles join returns null for tombstone rows (no profile to join to).
  */
 function rowToTeamMember(row: {
+  id: string;
   team_id: string;
-  profile_id: string;
+  profile_id: string | null;
   created_at: string;
   profiles: {
     display_name: string | null;
@@ -97,6 +103,7 @@ function rowToTeamMember(row: {
   // we surface null when not available
 }): TeamMember {
   return {
+    id: row.id,
     teamId: row.team_id,
     profileId: row.profile_id,
     createdAt: row.created_at,
@@ -370,10 +377,14 @@ export class SupabaseTeamsRepository implements TeamsRepository {
   async listMembers(teamId: string): Promise<TeamMember[]> {
     const supabase = await getSupabaseServerClient();
 
+    // `id` is selected to expose the surrogate UUID PK (added in migration
+    // 20260819000001). It is used as the React key and for tombstone removal.
+    // `profile_id` is nullable after migration 20260819000001 — tombstone rows
+    // (profile of a deleted employee) have profile_id = NULL.
     const { data, error } = await supabase
       .from("team_members")
       .select(
-        "team_id, profile_id, created_at, profiles(display_name, role)"
+        "id, team_id, profile_id, created_at, profiles(display_name, role)"
       )
       .eq("team_id", teamId)
       .order("created_at", { ascending: true });
@@ -383,8 +394,9 @@ export class SupabaseTeamsRepository implements TeamsRepository {
     }
 
     type MemberRow = {
+      id: string;
       team_id: string;
-      profile_id: string;
+      profile_id: string | null;
       created_at: string;
       profiles: { display_name: string | null; role: string | null } | null;
     };
@@ -404,8 +416,10 @@ export class SupabaseTeamsRepository implements TeamsRepository {
     const serviceClient = getSupabaseServiceRoleClient();
 
     // ON CONFLICT DO NOTHING makes this idempotent (PRD FR-04: adding an
-    // already-existing member is a no-op). The DB composite PK (team_id,
-    // profile_id) is the conflict target.
+    // already-existing member is a no-op). After migration 20260819000001 the
+    // composite PK (team_id, profile_id) was demoted to a UNIQUE constraint;
+    // PostgREST onConflict works with UNIQUE constraints as well as PKs, so
+    // the conflict target string "team_id,profile_id" continues to work correctly.
     const { error } = await serviceClient
       .from("team_members")
       .upsert(
@@ -422,6 +436,16 @@ export class SupabaseTeamsRepository implements TeamsRepository {
   // removeMember — uses SERVICE-ROLE per DB handoff contract (lines 436-437)
   // -------------------------------------------------------------------------
   async removeMember(teamId: string, profileId: string): Promise<void> {
+    // FOOTGUN GUARD: never call this with a null profileId.
+    // `.eq("profile_id", null)` would match ALL tombstone rows in the team.
+    // Use removeMemberById for tombstone removal.
+    if (profileId === null || profileId === undefined) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "removeMember requires a non-null profileId. Use removeMemberById to remove tombstone rows."
+      );
+    }
+
     // Service-role matches the DB handoff contract. Scoped by both team_id
     // AND profile_id to prevent unintended broad deletes.
     const serviceClient = getSupabaseServiceRoleClient();
@@ -434,6 +458,34 @@ export class SupabaseTeamsRepository implements TeamsRepository {
 
     if (error) {
       throw mapPostgrestError(error, "removeMember");
+    }
+    // A no-op delete (row didn't exist) is acceptable — idempotent removal.
+  }
+
+  // -------------------------------------------------------------------------
+  // removeMemberById — tombstone removal via surrogate UUID PK
+  // -------------------------------------------------------------------------
+  /**
+   * Removes a team_members row by its surrogate UUID primary key.
+   *
+   * This is the ONLY safe way to remove a tombstone row (profile_id = null).
+   * Uses `.eq("id", memberRowId).eq("team_id", teamId)` — dual-column guard
+   * prevents cross-team deletes even with service-role access.
+   *
+   * Uses service-role because tombstone rows have profile_id = null and are
+   * therefore invisible to any RLS policy that filters on auth.uid() = profile_id.
+   */
+  async removeMemberById(memberRowId: string, teamId: string): Promise<void> {
+    const serviceClient = getSupabaseServiceRoleClient();
+
+    const { error } = await serviceClient
+      .from("team_members")
+      .delete()
+      .eq("id", memberRowId)
+      .eq("team_id", teamId); // dual-column guard — prevents cross-team deletes
+
+    if (error) {
+      throw mapPostgrestError(error, "removeMemberById");
     }
     // A no-op delete (row didn't exist) is acceptable — idempotent removal.
   }

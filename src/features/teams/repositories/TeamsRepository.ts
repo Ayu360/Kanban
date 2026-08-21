@@ -107,10 +107,26 @@ export interface TeamsRepository {
   addMember(teamId: string, profileId: string): Promise<void>;
 
   /**
-   * Removes a profile from a team.
+   * Removes a live (non-tombstone) member from a team by profileId.
    * Deletes the team_members row. A no-op if the row does not exist.
+   *
+   * IMPORTANT: profileId must never be null. Passing null would issue
+   * `.eq("profile_id", null)` which matches ALL tombstone rows for the team
+   * (a footgun). Guard callers must check profileId !== null before calling.
+   * For tombstone removal, use removeMemberById instead.
    *
    * Throws AppError on unexpected failures.
    */
   removeMember(teamId: string, profileId: string): Promise<void>;
+
+  /**
+   * Removes a team_members row by its surrogate UUID primary key.
+   * This is the ONLY safe way to remove a tombstone row (profile_id = null).
+   *
+   * Uses `.eq("id", memberRowId).eq("team_id", teamId)` — dual-column guard
+   * prevents cross-team deletes even with service-role access.
+   *
+   * Throws AppError on unexpected failures.
+   */
+  removeMemberById(memberRowId: string, teamId: string): Promise<void>;
 }

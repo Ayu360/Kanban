@@ -2,3 +2,4 @@
 - [RLS Policy Patterns](rls_patterns.md) — JWT claim access, three-tier policy shape, grant conventions, function inventory
 - [Employees Module DB Layer](employees_module.md) — status column on profiles, JWT hook extended with status claim, four SECURITY DEFINER RPCs, no new tables
 - [Service-Role Grant Gap](service_role_grant_gap.md) — Supabase default bootstrap grants are absent; every migration must include service_role table grants or rely on 20260818000001
+- [Employee Lifecycle Module DB Layer](employee_lifecycle_module.md) — team_members surrogate PK, boards.created_by, deletion_scheduled_at, employee_lifecycle_log, five lifecycle RPCs, pg_cron job

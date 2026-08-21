@@ -5,3 +5,4 @@
 - [Project: Employees Backend Implementation](project_employees_backend.md) — Employees module backend complete; views, RPCs, two-step deactivate/reactivate, middleware status checks, all hooks, container wiring, frontend handoff done
 - [User: Developer Profile](user_profile.md) — Owner of a Next.js Kanban platform evolving to production Work Management Platform
 - [Feedback: Use yarn not pnpm](feedback_package_manager.md) — Project uses yarn; never use pnpm
+- [Project: Employee Lifecycle Backend Implementation](project_employee_lifecycle_backend.md) — PRD 05 Phase 2 backend complete; audit log, 5 new actions, auth-sweep cron, gap migrations, frontend handoff done

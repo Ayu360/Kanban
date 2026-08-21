@@ -1,6 +1,6 @@
 ---
 name: Employees Module Backend Patterns
-description: Established patterns from the Employees module backend review (reviewed 2026-08-15) and hotfix review (2026-08-18); service-role RPC pattern, banUser ID contract, middleware status-claim guard, service-role table grants
+description: Established patterns from Employees module backend reviews (2026-08-15, 2026-08-18, 2026-08-20); service-role RPC pattern, banUser ID contract, middleware status-claim guard, service-role table grants, lifecycle deletion actions
 type: project
 ---
 
@@ -37,6 +37,30 @@ Service-role table grants gap (resolved 2026-08-18): All prior migrations grante
 ---
 
 `removeMember` (SupabaseTeamsRepository) uses service-role with `.eq('team_id', teamId).eq('profile_id', profileId)` — no company_id scope filter. Cross-company safety relies entirely on the `team_members` table having a FK to `teams(id)`, combined with the service layer checking admin permission. The DB architect's concern about a missing company_id filter is partially mitigated because you cannot remove a member from a team you don't own unless you know both the teamId AND the profileId, and both IDs are UUIDs obtained through the authenticated session. Assessed as acceptable tech debt for current single-company MVP. If cross-company admin capabilities are ever added, `removeMember` should gain a company_id filter.
+
+---
+
+--- PRD 05 Employee Lifecycle Deletion (all layers, RV-1 final review 2026-08-21, GREEN) ---
+
+`softDeleteEmployeeAction` double-log was FIXED in the backend revision. The action no longer calls `writeLifecycleLog` — the RPC handles the `soft_deleted` log atomically. The `writeLifecycleLog` import in `employeesLifecycleActions.ts` is used only by `resendInviteAction`. No double-log exists in the shipped code.
+
+`changeEmployeeRoleAction` logs `role_changed` even on noop (when old_role === new_role). Deferred low-priority cleanup; not re-flagged in RV-1.
+
+PRD 05 Frontend Phase 3 (FE-2, FE-3, FE-4) passed RV-1 with one YELLOW should-fix: the `cancel-scheduled-deletion` dialog uses `cancelLabel="Dismiss"` while PRD 05 copy table specifies `cancelLabel="Keep"` (or equivalent non-"Dismiss" wording). All other dialog copy, quorum checks, badge precedence, polling logic, and race-case handling verified correct end-to-end.
+
+`_promote_scheduled_deletions` cron function writes the `hard_deleted` log AFTER the confirmed DELETE (not before, unlike `hard_delete_employee` which writes before). This is intentional and safe for the cron path: actor_profile_id is NULL in the cron context so no pre-delete FK capture is needed for the actor; target identity is captured from the loop-SELECT snapshot before DELETE; the log write happens inside the same transaction loop iteration. Verified correct.
+
+Auth-sweep cron `/api/cron/sweep-orphaned-auth` uses `CRON_SECRET` missing-check that returns 503 (not 401) when unconfigured — deliberate fail-closed behavior. Pattern confirmed correct.
+
+`hasOtherAdmin` quorum check in `EmployeesPageContent` derives from the in-memory `employees` list via `useMemo` — no extra fetch. Checked correctly: `role === 'admin' && status !== 'deactivated' && id !== user.id`. Note: does NOT exclude grace-window employees (deletionScheduledAt !== null) from the admin quorum count. An admin in the grace window (banned, access revoked) still counts as a quorum admin. This is a known edge-case risk but acceptable for MVP single-company context — the DB guard (G3) in `soft_delete_employee` uses the same count logic.
+
+Last-admin lockout in the new lifecycle actions (soft_delete, hard_delete) fires only for self-delete (`caller.id === targetProfileId`). A platform admin can hard-delete or schedule the only remaining company admin without being blocked — pre-existing architectural gap, not introduced in PRD 05.
+
+`undoScheduledDeletionAction` maps `{ success: false, reason: 'already_deleted' }` from the RPC into `ActionResult.success = true, data.cancelled = false`. This is a deliberate design choice (the admin's intent is satisfied). The frontend must check `result.success === true && !result.data.cancelled && result.data.reason === 'already_deleted'` to detect the cron-won-the-race case.
+
+`LogWriteError` sentinel class pattern is established: thrown by `writeLifecycleLog` on INSERT failure, callers catch it and console.error, primary ActionResult is unaffected. Log failure is an ops concern, not a user-facing error. This pattern is now project convention for all lifecycle log writes.
+
+Auth-sweep cron (`/api/cron/sweep-orphaned-auth`): 10-minute grace window on `created_at` is a hard constraint — do not remove. Prevents sweeping freshly invited auth.users rows before the profiles row is inserted by `inviteEmployeeAction`. Batch IN() query for profile existence check: established pattern for efficiency.
 
 ---
 

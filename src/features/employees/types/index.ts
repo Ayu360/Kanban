@@ -26,6 +26,22 @@ export { AppError } from "@/features/auth/types";
  */
 export type EmployeeStatus = "active" | "pending" | "deactivated";
 
+/**
+ * Valid action values for the employee_lifecycle_log table.
+ * Mirrors the CHECK constraint in 20260819000002.
+ */
+export type LifecycleLogAction =
+  | "invite_sent"
+  | "invite_cancelled"
+  | "invite_resent"
+  | "invite_accepted"
+  | "role_changed"
+  | "deactivated"
+  | "reactivated"
+  | "soft_deleted"
+  | "hard_deleted"
+  | "deletion_undone";
+
 // ---------------------------------------------------------------------------
 // Employee (directory shape — minimal, safe for plain employee reads)
 // ---------------------------------------------------------------------------
@@ -55,6 +71,9 @@ export interface Employee {
  * `email` comes from the view's JOIN on auth.users.
  * `displayName` may be null for pending (never-accepted) invitees — fall back
  * to `email` in the UI for display purposes.
+ * `deletionScheduledAt` is non-null when the employee is in the 24-hour
+ * soft-delete grace window. The frontend uses this to render the "Deletion
+ * Scheduled" status badge and tooltip with the scheduled deletion timestamp.
  */
 export interface AdminEmployee {
   id: string;
@@ -64,6 +83,8 @@ export interface AdminEmployee {
   role: string;
   status: EmployeeStatus;
   deactivatedAt: string | null;
+  /** ISO timestamp when the account will be permanently deleted, or null. */
+  deletionScheduledAt: string | null;
   isPlatformAdmin: boolean;
   createdAt: string;
 }
@@ -119,4 +140,31 @@ export interface ActivateInvitedResult {
   previousStatus: string | undefined;
   status: EmployeeStatus;
   noop: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle deletion result shapes (PRD 05)
+// ---------------------------------------------------------------------------
+
+export interface SoftDeleteResult {
+  deletionScheduledAt: string;
+}
+
+export interface HardDeleteResult {
+  success: true;
+}
+
+export interface UndoScheduledDeletionResult {
+  /** true = deletion window cleared successfully; false = cron already deleted */
+  cancelled: boolean;
+  /** If cancelled is false, reason will be 'already_deleted' */
+  reason?: "already_deleted";
+}
+
+export interface CancelInviteResult {
+  success: true;
+}
+
+export interface ResendInviteResult {
+  success: true;
 }

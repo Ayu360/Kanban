@@ -266,9 +266,14 @@ export class TeamsService {
   // removeTeamMember
   // -------------------------------------------------------------------------
   /**
-   * Removes a profile from a team.
+   * Removes a live (non-tombstone) member from a team.
    *
    * Authorization: platform admin OR company admin.
+   *
+   * IMPORTANT: profileId must be a non-null, valid UUID. This method must
+   * NOT be called for tombstone rows (profileId = null). Use removeTombstone
+   * for tombstone removal — it routes to removeMemberById which uses the
+   * surrogate `id` to target the specific row safely.
    */
   async removeTeamMember(
     teamId: string,
@@ -278,6 +283,14 @@ export class TeamsService {
     // Input validation
     const teamIdError = validateUUID(teamId, "Team ID");
     if (teamIdError) throw new AppError("VALIDATION_ERROR", teamIdError);
+
+    // Explicit null guard — callers must not route tombstones here
+    if (profileId === null || profileId === undefined) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "profileId is required. Use removeTombstone to remove tombstone rows."
+      );
+    }
 
     const profileIdError = validateUUID(profileId, "Profile ID");
     if (profileIdError) throw new AppError("VALIDATION_ERROR", profileIdError);
@@ -292,6 +305,42 @@ export class TeamsService {
     }
 
     return this.repo.removeMember(teamId, profileId);
+  }
+
+  // -------------------------------------------------------------------------
+  // removeTombstone
+  // -------------------------------------------------------------------------
+  /**
+   * Removes a tombstone row (profile_id = null) from a team.
+   *
+   * Tombstone rows are team_members rows whose profile was hard-deleted.
+   * They must be targeted by the surrogate `id` (memberRowId) rather than
+   * profileId — a null profileId would match ALL tombstones in the team.
+   *
+   * Authorization: platform admin OR company admin.
+   */
+  async removeTombstone(
+    teamId: string,
+    memberRowId: string,
+    caller: Profile
+  ): Promise<void> {
+    // Input validation
+    const teamIdError = validateUUID(teamId, "Team ID");
+    if (teamIdError) throw new AppError("VALIDATION_ERROR", teamIdError);
+
+    const rowIdError = validateUUID(memberRowId, "Member row ID");
+    if (rowIdError) throw new AppError("VALIDATION_ERROR", rowIdError);
+
+    // Authorization check (defense-in-depth)
+    const isAdmin = caller.isPlatformAdmin || caller.role === "admin";
+    if (!isAdmin) {
+      throw new AppError(
+        "FORBIDDEN",
+        "You do not have permission to manage team members."
+      );
+    }
+
+    return this.repo.removeMemberById(memberRowId, teamId);
   }
 
   // -------------------------------------------------------------------------

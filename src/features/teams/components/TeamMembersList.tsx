@@ -21,6 +21,7 @@
 import { useMemo, useState } from "react";
 import { useTeamMembers } from "../hooks/useTeamMembers";
 import { useRemoveTeamMember } from "../hooks/useRemoveTeamMember";
+import { useRemoveTombstone } from "../hooks/useRemoveTombstone";
 import { useAddTeamMember } from "../hooks/useAddTeamMember";
 import TeamMemberRow from "./TeamMemberRow";
 import AddMemberModal from "./AddMemberModal";
@@ -37,11 +38,19 @@ export default function TeamMembersList({
   const { members, isLoading, error } = useTeamMembers(teamId);
 
   // M-2: Derive existing member IDs so AddMemberModal can filter them out.
+  // Tombstone rows (profileId === null) are excluded — they are not live member
+  // slots and should not block re-invitation or adding the same profile again.
   const existingMemberIds = useMemo(
-    () => new Set(members.map((m) => m.profileId)),
+    () =>
+      new Set(
+        members
+          .filter((m) => m.profileId !== null)
+          .map((m) => m.profileId as string)
+      ),
     [members]
   );
   const removeMutation = useRemoveTeamMember();
+  const removeTombstoneMutation = useRemoveTombstone();
   const addMutation = useAddTeamMember();
 
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -49,9 +58,10 @@ export default function TeamMembersList({
 
   // M-3: Track each in-flight removal independently so concurrent removals
   // don't steal each other's pending indicator.
-  const [removingProfileIds, setRemovingProfileIds] = useState<Set<string>>(
-    new Set()
-  );
+  // Keys are the surrogate member row IDs (team_members.id), not profileIds.
+  // This handles tombstone rows correctly because tombstone profileId is null
+  // and cannot be used as a stable, unique key.
+  const [removingRowIds, setRemovingRowIds] = useState<Set<string>>(new Set());
   const [removeErrors, setRemoveErrors] = useState<Record<string, string>>({});
 
   // M-5: Local search state — never stored in server cache.
@@ -76,14 +86,18 @@ export default function TeamMembersList({
     );
   };
 
-  const handleRemoveMember = (profileId: string) => {
-    // Prevent duplicate in-flight removal for the same member.
-    if (removingProfileIds.has(profileId)) return;
+  /**
+   * Removes a live member (profileId !== null) from the team.
+   * rowId is the surrogate team_members.id used to track pending state.
+   */
+  const handleRemoveMember = (profileId: string, rowId: string) => {
+    // Prevent duplicate in-flight removal for the same row.
+    if (removingRowIds.has(rowId)) return;
 
-    setRemovingProfileIds((prev) => new Set(prev).add(profileId));
+    setRemovingRowIds((prev) => new Set(prev).add(rowId));
     setRemoveErrors((prev) => {
       const next = { ...prev };
-      delete next[profileId];
+      delete next[rowId];
       return next;
     });
 
@@ -91,29 +105,74 @@ export default function TeamMembersList({
       { teamId, profileId },
       {
         onSuccess: (result) => {
-          // Always clear this member's pending state on success.
-          setRemovingProfileIds((prev) => {
+          setRemovingRowIds((prev) => {
             const next = new Set(prev);
-            next.delete(profileId);
+            next.delete(rowId);
             return next;
           });
           if (!result.success) {
             setRemoveErrors((prev) => ({
               ...prev,
-              [profileId]: result.error.message,
+              [rowId]: result.error.message,
             }));
           }
         },
         onError: () => {
-          // Clear only this member's pending state on error.
-          setRemovingProfileIds((prev) => {
+          setRemovingRowIds((prev) => {
             const next = new Set(prev);
-            next.delete(profileId);
+            next.delete(rowId);
             return next;
           });
           setRemoveErrors((prev) => ({
             ...prev,
-            [profileId]: "Failed to remove member. Please try again.",
+            [rowId]: "Failed to remove member. Please try again.",
+          }));
+        },
+      }
+    );
+  };
+
+  /**
+   * Removes a tombstone row (profileId === null) by its surrogate row ID.
+   * Uses removeTombstoneMutation which calls removeTombstoneAction, routing
+   * to the surrogate-PK delete path in the repository.
+   */
+  const handleRemoveTombstone = (memberRowId: string) => {
+    // Prevent duplicate in-flight removal for the same tombstone row.
+    if (removingRowIds.has(memberRowId)) return;
+
+    setRemovingRowIds((prev) => new Set(prev).add(memberRowId));
+    setRemoveErrors((prev) => {
+      const next = { ...prev };
+      delete next[memberRowId];
+      return next;
+    });
+
+    removeTombstoneMutation.mutate(
+      { teamId, memberRowId },
+      {
+        onSuccess: (result) => {
+          setRemovingRowIds((prev) => {
+            const next = new Set(prev);
+            next.delete(memberRowId);
+            return next;
+          });
+          if (!result.success) {
+            setRemoveErrors((prev) => ({
+              ...prev,
+              [memberRowId]: result.error.message,
+            }));
+          }
+        },
+        onError: () => {
+          setRemovingRowIds((prev) => {
+            const next = new Set(prev);
+            next.delete(memberRowId);
+            return next;
+          });
+          setRemoveErrors((prev) => ({
+            ...prev,
+            [memberRowId]: "Failed to remove slot. Please try again.",
           }));
         },
       }
@@ -174,11 +233,20 @@ export default function TeamMembersList({
           className="text-base font-semibold text-slate-900 dark:text-slate-100"
         >
           Members
-          {members.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
-              ({members.length})
-            </span>
-          )}
+          {members.length > 0 && (() => {
+            const liveCount = members.filter((m) => m.profileId !== null).length;
+            const tombstoneCount = members.length - liveCount;
+            return (
+              <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                ({liveCount})
+                {tombstoneCount > 0 && (
+                  <span className="ml-1.5 text-xs text-slate-400 dark:text-slate-500">
+                    · {tombstoneCount} deleted slot{tombstoneCount !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </span>
+            );
+          })()}
         </h2>
         {isAdmin && (
           <button
@@ -267,13 +335,15 @@ export default function TeamMembersList({
         <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-800">
           {filteredMembers.map((member) => (
             <TeamMemberRow
-              key={member.profileId}
+              key={member.id}
+              memberRowId={member.id}
               profileId={member.profileId}
               displayName={member.displayName}
               role={member.role}
               isAdmin={isAdmin}
-              isRemovePending={removingProfileIds.has(member.profileId)}
-              onRemove={handleRemoveMember}
+              isRemovePending={removingRowIds.has(member.id)}
+              onRemove={(profileId) => handleRemoveMember(profileId, member.id)}
+              onRemoveTombstone={handleRemoveTombstone}
             />
           ))}
         </div>

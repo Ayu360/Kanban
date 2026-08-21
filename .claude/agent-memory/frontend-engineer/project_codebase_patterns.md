@@ -55,14 +55,20 @@ type: project
 - Member count (`memberCount`) is `null` pending backend aggregate; see `docs/handoffs/frontend-to-backend-teams-member-count.md`.
 - L-2 aria-current pattern: `usePathname()` + `pathname.startsWith(route)` → `aria-current="page"` on nav links.
 
-## Employees Feature (implemented 2026-08-15)
+## Employees Feature (implemented 2026-08-15, PRD 05 Phase 3 added 2026-08-20)
 - Components in `src/features/employees/components/`: `EmployeesPageContent`, `EmployeeCard`, `InviteEmployeeModal`, `EmployeeConfirmDialog`.
 - Routes: `src/app/employees/` (admin management), `src/app/accept-invite/` (invite callback).
-- Hooks are backend-provided (read-only for frontend): `useEmployees`, `useEmployeeDirectory`, `useInviteEmployee`, `useChangeEmployeeRole`, `useDeactivateEmployee`, `useReactivateEmployee`, `useActivateInvitedEmployee`.
+- Hooks: `useEmployees`, `useEmployeeDirectory`, `useInviteEmployee`, `useChangeEmployeeRole`, `useDeactivateEmployee`, `useReactivateEmployee`, `useActivateInvitedEmployee` (all pre-existing); plus PRD 05 additions: `useSoftDeleteEmployee`, `useHardDeleteEmployee`, `useUndoScheduledDeletion`, `useCancelInvite`, `useResendInvite`.
 - Query key factory: `employeesQueryKeys` exported from `useEmployees.ts`.
 - `EmployeeConfirmDialog` is a parameterized confirm dialog with `variant='default'|'destructive'` — candidate for promotion to shared component.
 - `useEmployeeDirectory()` result must be filtered `employees.filter(e => e.displayName !== null)` before rendering pickers (pending employees have null displayName).
 - `/accept-invite` is in middleware `PENDING_ALLOWED_PATHS` (line 85 of `src/middleware.ts`).
 - Login page (`src/app/login/page.tsx`) reads `?error=deactivated` / `?error=pending` from `useSearchParams()` and shows amber banner.
-- `EmployeesPageContent` uses two separate error banner + two separate Set-based pending trackers (one for role, one for status) to keep concurrent actions isolated.
+- `EmployeesPageContent` uses three error banners + three Set-based pending trackers (role, status, deletion) for concurrent action isolation.
 - `KanbanHeader` now shows "Employees" nav link to admins only (after Teams, before "How it works").
+- **PRD 05 hook invalidation pattern inconsistency**: older hooks (deactivate/reactivate/invite) use conditional `onSuccess` invalidation; new PRD 05 hooks use unconditional invalidation (FE-1/tombstone pattern). Deferred cleanup.
+- **`useEmployees` grace-window polling (FE-4)**: `refetchInterval` at 30s when any row has `deletionScheduledAt !== null`; uses TanStack Query v5 `query`-argument form.
+- **`deletionScheduledAt` badge precedence**: `EmployeeCard` renders "Deletion Scheduled" (amber) badge instead of "Active" when `deletionScheduledAt !== null`. Tooltip via `title` attribute (a11y improvement deferred).
+- **Quorum check in parent**: `hasOtherAdmin` is computed via `useMemo` in `EmployeesPageContent` and passed down to `EmployeeCard` to gate self-delete actions.
+- **`DismissibleErrorBanner`**: declared module-level (not inside render) to avoid react-hooks/static-components lint error.
+- **`AdminEmployee.deletionScheduledAt`**: ISO 8601 UTC string; formatted via `new Date(...).toLocaleString()` for user's local timezone.
