@@ -10,9 +10,7 @@ import { setSearchQuery } from "@/store/slices/uiSlice";
 import type { RootState } from "@/store";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { signOutAction } from "@/features/auth/services/authActions";
-import { useTeams } from "@/features/teams/hooks/useTeams";
-import { useActiveTeamId } from "@/features/teams/hooks/useActiveTeamId";
-import TeamSwitcher from "@/features/teams/components/TeamSwitcher";
+import { LAST_TEAM_KEY } from "@/features/teams/constants";
 
 type AppDispatch = typeof store.dispatch;
 
@@ -55,8 +53,6 @@ const KanbanHeader = () => {
   const dispatch = useDispatch<AppDispatch>();
   const searchQuery = useSelector((state: RootState) => state.ui.searchQuery);
   const { user } = useCurrentUser();
-  const { teams } = useTeams();
-  const activeTeamId = useActiveTeamId();
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [menuOpen, setMenuOpen] = useState(false);
   const [burgerOpen, setBurgerOpen] = useState(false);
@@ -72,14 +68,6 @@ const KanbanHeader = () => {
   // Fix 3: Only show the search bar on pages where task search is relevant.
   const showSearch =
     pathname === "/kanban" || /^\/teams\/[^/]+\/board$/.test(pathname);
-
-  // Whether the team switcher should be visible at all.
-  // Requires: at least 2 teams loaded AND we're on a team-scoped route.
-  const showSwitcher =
-    teams.length >= 2 && activeTeamId !== null;
-
-  // Other teams (excludes active) — passed to the mobile burger section.
-  const otherTeams = teams.filter((t) => t.id !== activeTeamId);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -100,12 +88,6 @@ const KanbanHeader = () => {
   const handleBurgerToggle = useCallback(() => {
     setMenuOpen(false);
     setBurgerOpen((o) => !o);
-  }, []);
-
-  // Called by TeamSwitcher via onOpenChange prop.
-  // Closes the user menu when the switcher opens; no other coordination needed.
-  const handleSwitcherOpenChange = useCallback((open: boolean) => {
-    if (open) setMenuOpen(false);
   }, []);
 
   // Close burger on Escape.
@@ -182,28 +164,6 @@ const KanbanHeader = () => {
                   >
                     How it works
                   </Link>
-
-                  {/* Switch team section — only shown when user has 2+ teams
-                      and is on a team-scoped route */}
-                  {showSwitcher && otherTeams.length > 0 && (
-                    <>
-                      <div className="border-t border-slate-200 dark:border-slate-600" />
-                      <p className="px-4 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        Switch team
-                      </p>
-                      {otherTeams.map((team) => (
-                        <Link
-                          key={team.id}
-                          href={`/teams/${team.id}/board`}
-                          role="menuitem"
-                          onClick={() => setBurgerOpen(false)}
-                          className="block truncate px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                          {team.name}
-                        </Link>
-                      ))}
-                    </>
-                  )}
                 </div>
               </>
             )}
@@ -234,16 +194,6 @@ const KanbanHeader = () => {
             >
               Employees
             </Link>
-          )}
-          {/* Desktop team switcher — between Employees and How it works */}
-          {showSwitcher && (
-            <span className="hidden sm:block">
-              <TeamSwitcher
-                teams={teams}
-                activeTeamId={activeTeamId}
-                onOpenChange={handleSwitcherOpenChange}
-              />
-            </span>
           )}
           <Link
             href="/how-it-works"
@@ -312,7 +262,7 @@ const KanbanHeader = () => {
                       action={signOutAction}
                       onSubmit={() => {
                         if (typeof window !== "undefined") {
-                          localStorage.removeItem("kanban:lastTeamId");
+                          localStorage.removeItem(LAST_TEAM_KEY);
                         }
                       }}
                     >
