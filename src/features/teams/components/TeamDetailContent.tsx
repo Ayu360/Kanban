@@ -219,9 +219,9 @@ export default function TeamDetailContent({ teamId }: TeamDetailContentProps) {
 
         {/* Action buttons */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {/* Board link — placeholder until boards are navigable by board ID */}
+          {/* Board link */}
           <Link
-            href={`/teams/${teamId}`}
+            href={`/teams/${teamId}/board`}
             className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/40"
             aria-label={`Go to board for ${team.name}`}
           >

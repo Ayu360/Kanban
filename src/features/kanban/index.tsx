@@ -18,6 +18,9 @@ import {
 } from "@dnd-kit/core";
 import { useBoard, useCreateTask, useMoveTask } from "@/features/tasks/hooks";
 import type { Task } from "@/features/tasks/types";
+import { useTeams } from "@/features/teams/hooks/useTeams";
+import { useActiveTeamId } from "@/features/teams/hooks/useActiveTeamId";
+import TeamSwitcher from "@/features/teams/components/TeamSwitcher";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +82,13 @@ const KanbanDashBoard = ({ boardId }: KanbanDashBoardProps) => {
   const { board, isLoading, error } = useBoard(boardId);
   const moveTask = useMoveTask();
   const createTask = useCreateTask();
+
+  // Team switcher lives here (not in the app-shell KanbanHeader) because it is
+  // page-scoped — the switcher's purpose is to jump between team boards, which
+  // is only meaningful on a board page.
+  const { teams } = useTeams();
+  const activeTeamId = useActiveTeamId();
+  const showSwitcher = teams.length >= 2 && activeTeamId !== null;
 
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [addCardColumnId, setAddCardColumnId] = useState<string | null>(null);
@@ -229,6 +239,11 @@ const KanbanDashBoard = ({ boardId }: KanbanDashBoardProps) => {
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
         <KanbanHeader />
+        {showSwitcher && activeTeamId && (
+          <div className="mx-auto max-w-[1600px] px-4 pt-4 sm:px-6">
+            <TeamSwitcher teams={teams} activeTeamId={activeTeamId} />
+          </div>
+        )}
         <KanbanBody
           columns={board.columns}
           tasksByColumnId={tasksByColumnId}

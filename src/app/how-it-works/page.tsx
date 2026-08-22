@@ -193,11 +193,11 @@ export default function HowItWorksPage() {
                 3
               </motion.span>
               <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                Add and edit cards
+                Add and edit tasks
               </h2>
             </div>
             <p className="mb-6 text-slate-600 dark:text-slate-400">
-              Click <strong>&quot;Add card&quot;</strong> in any column to create a new task. Hover over a card and click{" "}
+              Click <strong>&quot;Add task&quot;</strong> in any column to create a new task. Hover over a card and click{" "}
               <strong>Edit</strong> to change its title and description. Use the gear icon in a column header to rename it.
             </p>
             <motion.div
@@ -222,7 +222,7 @@ export default function HowItWorksPage() {
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    Add card
+                    Add task
                   </motion.button>
                 </div>
               </div>

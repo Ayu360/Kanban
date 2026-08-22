@@ -10,6 +10,7 @@ import { setSearchQuery } from "@/store/slices/uiSlice";
 import type { RootState } from "@/store";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { signOutAction } from "@/features/auth/services/authActions";
+import { LAST_TEAM_KEY } from "@/features/teams/constants";
 
 type AppDispatch = typeof store.dispatch;
 
@@ -75,11 +76,17 @@ const KanbanHeader = () => {
     return () => clearTimeout(id);
   }, [searchInput, dispatch]);
 
+  // ---------------------------------------------------------------------------
+  // Dropdown coordination — only one open at a time.
+  // ---------------------------------------------------------------------------
+
   const handleMenuToggle = useCallback(() => {
+    setBurgerOpen(false);
     setMenuOpen((o) => !o);
   }, []);
 
   const handleBurgerToggle = useCallback(() => {
+    setMenuOpen(false);
     setBurgerOpen((o) => !o);
   }, []);
 
@@ -100,7 +107,7 @@ const KanbanHeader = () => {
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
         <div className="flex min-w-0 items-center gap-4">
-          {/* Fix 2b: Mobile burger button — visible only below sm breakpoint */}
+          {/* Mobile burger button — visible only below sm breakpoint */}
           <div className="relative sm:hidden">
             <button
               type="button"
@@ -118,7 +125,7 @@ const KanbanHeader = () => {
 
             {burgerOpen && (
               <>
-                {/* Fixed backdrop — click-outside-dismiss, same pattern as user menu */}
+                {/* Fixed backdrop — click-outside-dismiss */}
                 <div
                   className="fixed inset-0 z-10"
                   aria-hidden
@@ -249,8 +256,16 @@ const KanbanHeader = () => {
                       {user.email}
                     </div>
                     <div className="border-t border-slate-200 dark:border-slate-600" />
-                    {/* Fix 1: LogoutButton uses useFormStatus for pending state */}
-                    <form action={signOutAction}>
+                    {/* LogoutButton uses useFormStatus for pending state.
+                        onSubmit clears localStorage before the Server Action fires. */}
+                    <form
+                      action={signOutAction}
+                      onSubmit={() => {
+                        if (typeof window !== "undefined") {
+                          localStorage.removeItem(LAST_TEAM_KEY);
+                        }
+                      }}
+                    >
                       <LogoutButton />
                     </form>
                   </div>

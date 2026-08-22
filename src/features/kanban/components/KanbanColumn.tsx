@@ -73,7 +73,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
               d="M12 4v16m8-8H4"
             />
           </svg>
-          Add card
+          Add task
         </button>
       </div>
     </div>

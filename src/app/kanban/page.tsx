@@ -9,26 +9,48 @@ import KanbanHeader from "@/features/kanban/components/KanbanHeader";
 /**
  * /kanban — legacy convenience route.
  *
- * Redirects to the user's first team's board at /teams/[teamId]/board.
+ * Redirects to the appropriate team board:
+ *   1. No teams → renders placeholder (unchanged).
+ *   2. Single team → redirect to that team's board.
+ *   3. Multiple teams → prefer the last-visited team (localStorage),
+ *      validated against the user's current team list to guard against
+ *      stale IDs (team deleted, user removed from team). Falls back to
+ *      first team alphabetically if stored ID is missing or invalid.
+ *
  * The canonical board URL is /teams/[teamId]/board.
- *
- * If the user has no teams yet, shows a placeholder directing them to
- * the teams page to create or join a team.
- *
  * Auth enforcement is handled entirely by middleware (src/middleware.ts).
  */
+
+import { LAST_TEAM_KEY } from "@/features/teams/constants";
+
 export default function KanbanPage() {
   const router = useRouter();
   const { teams, isLoading } = useTeams();
 
   useEffect(() => {
     if (isLoading) return;
-    if (teams.length > 0) {
-      // Redirect to the first team's board. Replace so the user cannot
-      // navigate back to this route with the back button.
+    if (teams.length === 0) return; // no teams — fall through to placeholder
+
+    if (teams.length === 1) {
+      // Single-team shortcut — no localStorage lookup needed.
+      router.replace(`/teams/${teams[0].id}/board`);
+      return;
+    }
+
+    // Multiple teams: prefer last-visited team if stored and still valid.
+    // useEffect runs client-side only, so no SSR guard needed.
+    const storedId = localStorage.getItem(LAST_TEAM_KEY);
+
+    const isValidStored =
+      storedId !== null && teams.some((t) => t.id === storedId);
+
+    if (isValidStored && storedId !== null) {
+      router.replace(`/teams/${storedId}/board`);
+    } else {
+      // Fall back: first team alphabetically (teams are already sorted by name
+      // ascending from useTeams — see fetchTeams ORDER BY name ASC).
       router.replace(`/teams/${teams[0].id}/board`);
     }
-    // If no teams: fall through and render the placeholder below.
   }, [isLoading, teams, router]);
 
   if (isLoading) {
