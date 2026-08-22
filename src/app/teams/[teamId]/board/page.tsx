@@ -4,6 +4,7 @@ import { use } from "react";
 import { useBoardIdByTeam } from "@/features/tasks/hooks/useBoardIdByTeam";
 import KanbanDashBoard from "@/features/kanban";
 import KanbanHeader from "@/features/kanban/components/KanbanHeader";
+import { useRememberLastTeam } from "@/features/teams/hooks/useRememberLastTeam";
 
 /**
  * /teams/[teamId]/board — Team Kanban board page.
@@ -29,6 +30,9 @@ export default function TeamBoardPage({
 }) {
   const { teamId } = use(params);
   const { boardId, isLoading, error } = useBoardIdByTeam(teamId);
+
+  // Persist this team as the last-visited so /kanban can redirect back here.
+  useRememberLastTeam(teamId);
 
   if (isLoading) {
     return (
