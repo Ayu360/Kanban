@@ -1,6 +1,6 @@
 # Kanban Board Demo
 
-A front-end demo project showcasing **TanStack Query** and **Redux** with a Kanban board: fake multi-user login, data-driven columns, drag-and-drop, search, and edit. No backend—all data lives in an in-memory fake API.
+A front-end demo project showcasing **TanStack Query** and **Redux** with a Kanban board: fake multi-user login, data-driven columns, drag-and-drop, search, and edit. Backend is now live on supabase.
 
 ---
 
