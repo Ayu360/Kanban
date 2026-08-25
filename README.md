@@ -1,6 +1,8 @@
-# Kanban Board Demo
+# Work Management Platform
 
-A front-end demo project showcasing **TanStack Query** and **Redux** with a Kanban board: fake multi-user login, data-driven columns, drag-and-drop, search, and edit. Backend is now live on supabase.
+A production-ready, team-based work management application. Companies organise into teams, teams own Kanban boards, boards contain columns of tasks, and tasks are assigned to employees. Built for one company today, architected for many companies tomorrow.
+
+Originally a Kanban demo; now a full multi-feature platform with Supabase Auth, Postgres + RLS, employee lifecycle management, and multi-team navigation.
 
 ---
 
@@ -8,23 +10,55 @@ A front-end demo project showcasing **TanStack Query** and **Redux** with a Kanb
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Next.js 16 (App Router) |
-| UI | React 19, Tailwind CSS 4 |
-| Client state | Redux Toolkit |
-| Server-state / data fetching | TanStack Query (React Query) |
-| Drag and drop | @dnd-kit |
-| Language | TypeScript |
+| Framework | Next.js 16 (App Router, Server Components, Server Actions) |
+| UI | React 19, Tailwind CSS 4, `lucide-react`, `framer-motion` |
+| Client state | Redux Toolkit (UI-state only) |
+| Server state | TanStack Query 5 |
+| Drag and drop | `@dnd-kit/core`, `@dnd-kit/sortable` |
+| Backend | Supabase — Postgres, Auth, Row Level Security |
+| Auth transport | `@supabase/ssr` (HTTP-only cookies) |
+| Language | TypeScript (strict) |
+| Deployment | Vercel |
 
 ---
 
 ## Features
 
-- **Fake login** — Pick one of three users (Alice, Bob, Carol). Each user has their own board. Current user is stored in Redux and optionally persisted in `localStorage`.
-- **User switcher** — Change user from the header dropdown without leaving the board.
-- **Scalable columns** — Columns are data-driven (e.g. To Do, In Progress, Done). Easy to add new categories by extending the fake data.
-- **Drag and drop** — Move topics (cards) between columns. Updates go through TanStack Query mutations and the board refetches.
-- **Search** — Filter topics by title or description. Search query is in Redux; results are filtered before rendering.
-- **Edit** — Edit a topic (title + description) or a column title via a modal. Uses TanStack Query mutations; board invalidates and refetches.
+### Authentication
+- Email + password signup and login via Supabase Auth
+- Password reset (PKCE flow)
+- Invite acceptance for employees added by an admin (implicit hash flow)
+- Session enforcement in Next.js middleware — no flash of protected content, JS-disabled clients cannot bypass auth
+- Status-claim gating: `deactivated` users are signed out; `pending` invitees only reach `/accept-invite`
+
+### Teams
+- Create, rename, and delete teams
+- Add and remove team members
+- Team switcher in the app header for multi-team users
+- "Last visited team" is remembered and restored after login
+- Soft-delete + tombstone with an undo window
+
+### Employees (admin surface)
+- Invite by email (Supabase `inviteUserByEmail`)
+- Cancel or resend a pending invite
+- Change role between `admin` and `employee`
+- Deactivate / reactivate (JWT-aware — writes `status` to `app_metadata` via the custom access token hook)
+- Soft-delete with a scheduled hard-delete window and an undo action
+- Hard-delete (immediate, service-role)
+- Lifecycle log capturing every state transition
+- Nightly cron sweep for orphaned `auth.users` rows
+
+### Kanban Board
+- Data-driven columns (Todo, In Progress, Done — extensible)
+- Drag-and-drop tasks between columns with optimistic updates
+- Create, edit, and delete tasks
+- Assign tasks to team members
+
+### Multi-tenancy readiness
+- Every business table carries `company_id NOT NULL` from day one
+- All RLS policies filter by `company_id` and, for team-scoped tables, by team membership
+- MVP seeds a single "default" company; adding tenants later is a data-load exercise, not a schema rewrite
+- Two-tier admin: `profiles.role = 'admin'` (company admin) and `profiles.is_platform_admin = true` (platform superuser, RLS bypass)
 
 ---
 
@@ -32,45 +66,107 @@ A front-end demo project showcasing **TanStack Query** and **Redux** with a Kanb
 
 ### Prerequisites
 
-- Node.js 18+
-- npm (or yarn/pnpm)
+- Node.js 18+ (see `.nvmrc`)
+- A Supabase project (free tier is fine for development)
+- Vercel account (only required for deployment)
 
-### Install and run
+### Setup
 
 ```bash
-# Install dependencies
-npm install
+# 1. Install dependencies
+yarn install
 
-# Run in development
-npm run debug
+# 2. Configure environment
+cp .env.example .env.local
+# then fill in your Supabase project URL and keys
 
-# Build for production
-npm run build
+# 3. Apply database migrations to your Supabase project
+#    (via Supabase CLI or the SQL editor — see supabase/migrations/)
 
-# Run production build
-npm start
+# 4. Start the dev server
+yarn debug
 ```
 
-Then open [http://localhost:3000](http://localhost:3000). You’ll be redirected to `/login` or `/kanban` depending on auth state (right now fake).
+Open [http://localhost:3000](http://localhost:3000). The first user to sign up is automatically promoted to platform admin (first-user-wins bootstrap — see ADR-0014).
+
+### Environment variables
+
+| Name | Scope | Purpose |
+|------|-------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Browser + server | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser + server | Public anon key, RLS-respecting |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | RLS bypass; used only in privileged Server Actions |
+| `NEXT_PUBLIC_APP_URL` | Browser + server | Base URL for auth email redirects |
 
 ### Scripts
 
 | Script | Description |
 |--------|-------------|
-| `npm run debug` | Start Next.js dev server |
-| `npm run build` | Production build |
-| `npm start` | Run production server |
-| `npm run lint` | Run ESLint |
+| `yarn debug` | Start Next.js dev server |
+| `yarn build` | Production build |
+| `yarn start` | Run production server |
+| `yarn lint` | ESLint |
 
 ---
 
 ## Routes
 
-| Path | Description |
-|------|-------------|
-| `/` | Redirects to `/login` or `/kanban` based on current user |
-| `/login` | Fake login: choose a user to enter the app |
-| `/kanban` | Main board (guarded: redirects to `/login` if not logged in) |
+| Path | Auth | Description |
+|------|------|-------------|
+| `/` | Public | Landing page |
+| `/login` | Public | Email + password login |
+| `/signup` | Public | Signup (first user becomes platform admin) |
+| `/reset-password` | Public | Request a password reset email |
+| `/reset-password/confirm` | Public | Set a new password after clicking the email link |
+| `/accept-invite` | Public | Invitee completes account setup |
+| `/how-it-works` | Public | Product walkthrough |
+| `/kanban` | Protected | Default post-login board |
+| `/teams` | Protected | List of teams the user can access |
+| `/teams/[teamId]` | Protected | Team detail (members, settings) |
+| `/teams/[teamId]/board` | Protected | Team's Kanban board |
+| `/employees` | Admin only | Employee admin surface |
+| `/api/auth/callback` | Public | PKCE callback for password reset |
+| `/api/cron/sweep-orphaned-auth` | Cron only | Nightly cleanup of orphaned auth rows |
+
+---
+
+## Architecture
+
+Six-layer feature-first architecture. Each layer depends only on layers below it.
+
+```
+UI (React components)
+   ↓
+UI State (Redux slices — modals, filters, drag preview)
+   ↓
+Server State (TanStack Query hooks)
+   ↓
+Domain Service (business rules, orchestration)
+   ↓
+Repository (only layer that touches Supabase)
+   ↓
+Database (Postgres + RLS — the final authorization boundary)
+```
+
+**Rules**
+- UI components import hooks, never repositories.
+- Hooks import services, never the Supabase client.
+- Only repositories touch Supabase.
+- Redux never holds server data. TanStack Query never holds UI state.
+- Security is enforced in Postgres RLS, not in the frontend.
+
+### Repository swap seam
+
+Every feature defines a `Repository` **interface**. Hooks depend on the interface via a composition root (`src/lib/container.ts`), not on a concrete class. Today the concrete is `Supabase<Feature>Repository`; the interface makes it possible to swap in a `Node<Feature>Repository` later without touching hooks or components. See **ADR-0004**.
+
+### Two-tier admin model
+
+| Flag | Question it answers | Scope |
+|------|--------------------|-------|
+| `profiles.role = 'admin'` | Can this user manage *their own* company? | Company-scoped |
+| `profiles.is_platform_admin = true` | Can this user manage *the entire* platform? | Platform-wide (RLS bypass) |
+
+See **ADR-0007** and **ADR-0008**.
 
 ---
 
@@ -78,80 +174,78 @@ Then open [http://localhost:3000](http://localhost:3000). You’ll be redirected
 
 ```
 src/
-├── app/                    # Next.js App Router
-│   ├── layout.tsx          # Root layout, wraps app with Providers
-│   ├── page.tsx            # Home → redirect to login or kanban
-│   ├── login/page.tsx      # Fake login page
-│   ├── kanban/page.tsx     # Board page (auth guard)
-│   ├── Providers.tsx       # Redux + TanStack Query providers
-│   └── AuthHydration.tsx   # Restores user from localStorage
+├── app/                              Next.js App Router
+│   ├── (auth)/                       Login, signup, reset-password
+│   ├── accept-invite/                Invitee onboarding
+│   ├── api/
+│   │   ├── auth/callback/            PKCE callback
+│   │   └── cron/sweep-orphaned-auth/ Vercel cron
+│   ├── how-it-works/
+│   ├── kanban/                       Default board
+│   ├── teams/[teamId]/board/
+│   ├── employees/                    Admin surface
+│   ├── layout.tsx                    Root layout
+│   └── Providers.tsx                 QueryClient + Redux providers
 │
-├── store/                  # Redux
-│   ├── index.ts            # Store config
-│   └── slices/
-│       ├── authSlice.ts    # currentUser, setUser, clearUser
-│       └── uiSlice.ts      # searchQuery
-│
-├── api/                    # TanStack Query
-│   └── board.ts            # useBoard, useMoveTopic, useUpdateTopic, useUpdateColumn
+├── features/                         Feature-first slices
+│   ├── auth/         { hooks, repositories, services, types, utils }
+│   ├── employees/    { hooks, repositories, services, types, components }
+│   ├── kanban/       { components, types }
+│   ├── tasks/        { hooks, repositories, services, types }
+│   └── teams/        { hooks, repositories, services, types, components, utils }
 │
 ├── lib/
-│   └── fakeApi.ts          # In-memory data + getBoard, moveTopic, updateTopic, updateColumn
+│   ├── supabase/
+│   │   ├── browser.ts                Anon key + cookie session (browser)
+│   │   └── server.ts                 Server client + service-role factory
+│   ├── env.public.ts                 Browser-safe env vars
+│   ├── env.server.ts                 Server-only env vars
+│   ├── container.ts                  Composition root (wires repositories)
+│   └── errors.ts                     Normalised error type
 │
-└── features/kanban/
-    ├── index.tsx           # Kanban dashboard: useBoard, onDragEnd, edit state, filter by search
-    ├── types/
-    │   ├── index.ts        # User, Board, Column, Topic, etc.
-    │   └── interface/       # Re-exports for components
-    └── components/
-        ├── KanbanHeader.tsx   # Title, search input, user switcher
-        ├── KanbanBody.tsx     # Maps columns, passes topics per column
-        ├── KanbanColumn.tsx   # Droppable column, column title (editable), list of cards
-        ├── KanbanCard.tsx     # Draggable topic card, Edit button
-        └── EditModal.tsx      # Form for editing topic or column
+├── store/                            Redux (UI state only)
+│   ├── index.ts
+│   └── slices/
+│
+└── middleware.ts                     Session enforcement, status-claim gating
+
+supabase/
+├── config.toml
+└── migrations/                       SQL migrations (auth, teams, employees, tasks, RLS)
+
+docs/
+├── PROJECT_CONTEXT.md                Master architecture document
+├── adr/                              15 Architecture Decision Records
+├── prd/                              5 Product Requirement Documents
+└── handoffs/
 ```
 
 ---
 
-## How It Works
+## Documentation
 
-### Auth and routing
-
-- **Redux** holds `currentUser` (and optionally `storedUserId` for rehydration).
-- On load, `AuthHydration` reads `localStorage` and, if a stored user id exists, fetches fake users and sets `currentUser`.
-- `/login`: choose a user → `setUser` → redirect to `/kanban`.
-- `/kanban`: if `currentUser` is null, redirect to `/login`.
-
-### Board data
-
-- **TanStack Query** is the source of truth for board data. `useBoard(userId)` calls the fake API and returns board, columns, and topics.
-- The **fake API** (`src/lib/fakeApi.ts`) keeps per-user data in memory. Each user gets a board with three columns and a few topics. Mutations (`moveTopic`, `updateTopic`, `updateColumn`) update that in-memory state.
-- After any mutation, the board query is invalidated so the UI refetches and stays in sync.
-
-### Search
-
-- **Redux** holds `searchQuery` (updated from the header input with a short debounce).
-- The dashboard filters `board.topics` by title/description against `searchQuery`, then groups the result by `columnId` and passes it to `KanbanBody`. Only matching topics are shown.
-
-### Drag and drop
-
-- **@dnd-kit** is used: each column is a droppable (id = `column.id`), each card is draggable (id = `topic.id`).
-- On `onDragEnd`, the dashboard reads `active.id` (topic) and `over.id` (target column), then calls `useMoveTopic().mutateAsync(...)`. The fake API updates the topic’s `columnId`, and query invalidation refetches the board.
-
-### Edit
-
-- The dashboard keeps `editTarget` (topic or column or null). Clicking “Edit” on a card or the column header sets `editTarget` and opens `EditModal`.
-- The modal calls `onSaveTopic` or `onSaveColumn`, which trigger `useUpdateTopic` or `useUpdateColumn`. The fake API is updated and the board query is invalidated.
+- **[docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)** — the single source of architectural truth. Read this before proposing structural changes.
+- **[docs/adr/](docs/adr/)** — 15 ADRs. Highlights:
+  - `0003` — RLS is the authorization boundary
+  - `0004` — Repository/Service swap seam
+  - `0005` — TanStack Query for server state, Redux for UI state
+  - `0006` — Multi-tenancy `company_id` from day one
+  - `0011` — App Router middleware for session enforcement
+  - `0014` — First-user-wins platform admin bootstrap
+  - `0015` — Server Actions for privileged operations
+- **[docs/prd/](docs/prd/)** — feature PRDs for auth, teams, employees, tasks, and employee-lifecycle deletion.
+- **[CLAUDE.md](CLAUDE.md)** — engineering rules for AI subagents working in this repo.
 
 ---
 
-## Adding More Users or Columns
+## Development
 
-- **Users:** In `src/lib/fakeApi.ts`, extend the array returned by `getFakeUsers()` and ensure `createInitialBoardForUser(userId)` is used when that user’s board is first requested (it’s called from `getOrCreateUserBoard`).
-- **Columns:** In `createInitialBoardForUser()` in `src/lib/fakeApi.ts`, add another object to the `columns` array (with a unique `id`, `boardId`, `category`, `title`, `order`). New columns will appear automatically; you can add initial topics in the `topics` array with the new column’s `id` as `columnId`.
+This repo uses Claude Code subagents (tech-lead, backend-engineer, frontend-engineer, postgres-supabase-architect, senior-code-reviewer) for planned work. The shared engineering rules live in `CLAUDE.md`; role-specific rules live in `.claude/agents/`. Every agent's output is reviewed before the next agent starts.
+
+Guiding principle: *Build for one company. Design for many companies.*
 
 ---
 
 ## License
 
-Private / demo project.
+Private.
